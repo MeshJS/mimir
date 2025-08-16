@@ -268,7 +268,12 @@ export default function AISearch(props: DialogProps) {
     transport: new DefaultChatTransport({
       api: '/api/chat',
     }),
+    messages: getInitialChatHistory()
   });
+
+  useEffect(() => {
+    localStorage.setItem("mesh-ai-chat-history", JSON.stringify(chat.messages));
+  }, [chat.messages])
 
   const messages = chat.messages.filter((msg) => msg.role !== 'system');
 
@@ -331,4 +336,19 @@ export default function AISearch(props: DialogProps) {
       </DialogPortal>
     </Dialog>
   );
+}
+
+
+function getInitialChatHistory(): UIMessage[] {
+  try {
+    const chatMessages = localStorage.getItem("mesh-ai-chat-history");
+
+    if(chatMessages) {
+      return JSON.parse(chatMessages);
+    }
+
+  } catch(e) {
+    console.error(`Failed to retrieve chat messages from localStorage: ${e}`)
+  }
+  return []
 }
