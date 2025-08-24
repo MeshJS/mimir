@@ -28,7 +28,7 @@ export function WrapperLayout({ isHomeLayout, children }: { isHomeLayout: boolea
     return () => window.removeEventListener("resize", handleResize);
   }, [])
 
-  const usedHeight = isHomeLayout ? (isBannerClosed ? "56px" : "102px") : "0px"
+  const usedHeight = isHomeLayout ? "56px" : "0px"
 
   return (
     <div className="flex" style={{ minHeight: `calc(100vh - ${usedHeight})`, bottom: "1850px" }}>

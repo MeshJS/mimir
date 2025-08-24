@@ -1,0 +1,33 @@
+---
+title: "Mesh AI Features"
+description: "We've built AI tools to help you work with Mesh faster"
+---
+import Link from "fumadocs-core/link";
+
+## Ask MeshAI
+
+Ask MeshAI is the chatbot on the website which answers your queries instantly and accurately by utilizing the contextual retrieval built on top of traditional RAG.
+
+### How it works:
+
+MeshAI searches through all the vector embeddings of Mesh documentation, code examples and starter templates to find the right answer for your question. It uses contextual retrieval technique to pull closet vectors to your query and make an LLM call to produce accurate answer without making things up.
+
+### Example Response:
+
+<video controls>
+  <source src="/videos/demo.webm" type="video/webm" />
+</video>
+
+In this demo, we create a transaction that transfers ADA back to the sender’s own address using MeshAI.
+
+
+## LLMs.txt
+
+Mesh provides llms.txt file that is easily understood by AI tools. This file contains everything from Mesh documentation and code examples. This file can be plugged into any AI code editors and will be instantly indexed to help you code with AI using up-to-date documentation from Mesh. Because the file follows a standardized AI-friendly format, code generation stays consistent across different tools. Since it's written in markdown text, it's just as easy for humans to browse as it is for machines to process. You can find llms.txt file <Link href="/llms.txt">here</Link>.
+
+AI code editors like Cursor let you add and index documentation, so you can reference it directly in your chats. For example, you can bring Mesh docs into Cursor by typing @Docs → Add new doc. A modal will open where you can paste the link to the <Link href="/llms.txt">/llms.txt</Link> file. Once added, the doc becomes available as context, making it easier and faster to build apps with AI.
+
+
+## Mesh MCP (Coming Soon)
+
+We’re bringing Model Context Protocol (MCP) integration to Mesh, so you’ll be able to access Mesh knowledge right inside your favorite development tools. This means your editor will be able to help as you code, suggest snippets as you type, and even assist with debugging issues directly in your IDE. It’s designed to work seamlessly with tools like VS Code, Cursor, and other AI-powered editors, making your development workflow smoother and faster.
