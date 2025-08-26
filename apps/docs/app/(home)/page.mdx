@@ -1,163 +1,335 @@
-import { Card, Cards } from "fumadocs-ui/components/card";
 import Link from "fumadocs-core/link";
-import { CloudIcon, BanknotesIcon, WalletIcon, MagnifyingGlassIcon, WrenchScrewdriverIcon, ComputerDesktopIcon, DocumentCheckIcon } from "@heroicons/react/24/solid";
-import { iconResolver } from "@/lib/iconResolver"
+import {
+  ArrowRight,
+  Code,
+  Zap,
+  Shield,
+  Wallet,
+  Database,
+  Blocks,
+  Sparkles,
+  Rocket,
+  Globe,
+  Users,
+  Star,
+  ChevronRight,
+} from "lucide-react"
+import { cn } from '@/lib/cn';
+import { buttonVariants } from '@/components/ui/button';
+import { iconResolver } from "@/lib/iconResolver";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  BoltIcon,
+  PaintBrushIcon,
+  RocketLaunchIcon,
+  WalletIcon
+} from "@heroicons/react/24/solid";
 
-<main className="flex flex-1 flex-col container mx-auto px-2 lg:px-4">
-  <h1 className="mb-4 mt-16 text-5xl font-bold">Web3 TypeScript SDK</h1>
-  <h3 className="text-fd-muted-foreground">
-    Mesh is a TypeScript open-source framework and library, providing <br /> numerous tools to build on UTXO-based blockchains.
-  </h3>
+<main className="min-h-screen">
+  <section className="py-16 sm:py-20 lg:py-32 xl:py-36">
+    <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="text-center max-w-3xl mx-auto">
 
-  <Cards className="mt-16 mb-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-    <Card
-      title="Wallets"
-      href="/apis/wallets"
-      icon={<WalletIcon />}
-    >
-      Wallets APIs for interacting with the blockchain
-    </Card>
+        <div className="inline-flex items-center mb-4 px-3 py-1 rounded-full border border-border text-sm font-medium">
+          <span className="size-1 rounded-full mr-2 animate-[ping_2s_ease-out_infinite] bg-green-500"></span>
+          <Link href="/llms.txt">Mesh provides llms.txt integration</Link>
+        </div>
 
-    <Card
-      title="Transaction Builder"
-      href="/apis/txbuilder"
-      icon={<BanknotesIcon />}
-    >
-      Build transactions with cardano-cli like APIs
-    </Card>
+        <h1 className="font-heading font-extrabold text-5xl sm:text-6xl lg:text-7xl mb-6 leading-tight">
+          Ship UTXO Apps Faster with Mesh
+        </h1>
 
-    <Card
-      title="Transaction Parser"
-      href="/apis/txparser"
-      icon={<MagnifyingGlassIcon />}
-    >
-      Parse transactions for testing and rebuilding
-    </Card>
+        <p className="text-lg sm:text-xl mb-10 max-w-2xl mx-auto leading-relaxed">
+          Mesh is the open-source TypeScript SDK for Cardano that helps developers write better code and scale applications with ease
+        </p>
 
-    <Card
-      title="Providers"
-      href="/providers"
-      icon={<CloudIcon />}
-    >
-      Data providers for connecting to the blockchain
-    </Card>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <Link
+            href="/guides/nextjs"
+            className={cn(
+              buttonVariants({ size: 'lg', color: 'primary' }),
+              'rounded-xl px-10 py-4 text-lg font-semibold flex items-center justify-center gap-2 transition-all duration-500 group hover:shadow-xl hover:shadow-primary/10 hover:scale-105'
+            )}
+          >
+            🚀 Get Started
+          </Link>
 
-    <Card
-      title="Utilities"
-      href="/apis/utilities"
-      icon={<WrenchScrewdriverIcon />}
-    >
-      Serializers, resolvers and data types for converting between different formats
-    </Card>
+          <Link
+            href="https://github.com/MeshJS/examples"
+            className={cn(
+              buttonVariants({ size: 'lg', color: 'secondary' }),
+              'rounded-xl px-10 py-4 text-lg font-semibold flex items-center justify-center gap-2 transition-all duration-500 hover:shadow-xl hover:shadow-primary/10 hover:scale-105 group bg-gradient-to-br from-background to-card'
+            )}
+          >
+            <Code className="w-5 h-5" />
+            View Examples
+          </Link>
+        </div>
 
-    <Card
-      title="React Components"
-      href="/react"
-      icon={<ComputerDesktopIcon />}
-    >
-      Frontend React UI components and React hooks
-    </Card>
-
-    <Card
-      title="Svelte Components"
-      href="/svelte"
-      icon={<ComputerDesktopIcon />}
-    >
-      Svelte UI components for wallet connections
-    </Card>
-
-    <Card
-      title="Smart Contract Library"
-      href="/smart-contracts"
-      icon={<DocumentCheckIcon />}
-    >
-      Open-source smart contracts, complete with documentation, and live demos
-    </Card>
-
-    <Card
-      title="Aiken"
-      href="/aiken"
-      icon={iconResolver("icons/aiken.png")}
-    >
-      Function programming language created for Cardano smart contract development
-    </Card>
-
-    <Card
-      title="Hydra"
-      href="/hydra"
-      icon={iconResolver("icons/hydra.svg")}
-    >
-      Layer 2 scaling solution for Cardano
-    </Card>
-
-    <Card
-      title="Yaci"
-      href="/yaci"
-      icon={iconResolver("icons/yaci.png")}
-    >
-      Custom devnet to tailor your devnet needs with a builtin indexer
-    </Card>
-
-    <Card
-      title="Midnight"
-      href="https://midnight.meshjs.dev/en"
-      icon={iconResolver("icons/midnight.svg", "invert dark:invert-0")}
-    >
-      Leveraging zero-knowledge technology to enable data protection
-    </Card>
-
-    <Card
-      title="Polkadot"
-      href="https://polkadot.meshjs.dev/en"
-      icon={iconResolver("icons/polkadot.svg", "invert dark:invert-0")}
-    >
-      Tools and resources for developers to build on Polkadot
-    </Card>
-
-    <Card
-      title="Wallet as a Service"
-      href="https://utxos.dev/"
-      icon={iconResolver("icons/mesh.svg", "invert dark:invert-0")}
-    >
-      Access self-custodial wallet using social logins
-    </Card>
-  </Cards>
-
-  <h1 className="mb-2 text-3xl font-bold">Getting Started</h1>
-  <hr className="mb-6 border-fd-muted-foreground border-t-2 w-24" />
-
-  <div className="flex flex-col gap-8">
-    <div className="space-y-2">
-      <h2 className="text-xl font-medium">Get started with one command</h2>
-      <h3 className="text-fd-muted-foreground">Instantly set up a new project with a single command using Mesh CLI and start building.</h3>
-
-      <div className="relative text-sm p-3 rounded-md w-96 bg-gray-200 dark:bg-[#272727] text-black dark:text-white">
-        <code>npx meshjs your-app-name</code>
+        <div className="mt-12 flex flex-wrap justify-center gap-8 text-sm">
+          <span className="inline-flex items-center">
+            <Shield className="w-4 h-4 mr-1" />
+            Less than 60kB
+          </span>
+          <span className="inline-flex items-center">
+            <Sparkles className="w-4 h-4 mr-1" />
+            AI Integration
+          </span>
+          <span className="inline-flex items-center">
+            <Rocket className="w-4 h-4 mr-1" />
+            Production Ready
+          </span>
+          <span className="inline-flex items-center">
+            <Users className="w-4 h-4 mr-1" />
+            10k+ Developers
+          </span>
+        </div>
       </div>
     </div>
+  </section>
 
-    <div className="space-y-2">
-       <h2 className="text-xl font-medium">Explore documentation with live demos</h2>
-      <h3 className="text-fd-muted-foreground">
-        In Mesh Playground, most endpoints have live demo for you to try to see how it works, then copy the code snippet and use it.
-      </h3>
-      <Link className="underline underline-offset-6" href="/apis">Explore Mesh APIs ></Link>
-    </div>
 
-    <div className="space-y-2">
-      <h2 className="text-xl font-medium">Pre-built smart contracts</h2>
-      <h3 className="text-fd-muted-foreground">
-        Most popular smart contracts are available for you to use in your app. End-to-end implementation useful for learning too.
-      </h3>
-      <Link className="underline underline-offset-6" href="/smart-contracts">Start using smart contracts ></Link>
-    </div>
+  <section id="features" className="py-16 sm:py-20 lg:py-32 xl:py-36 relative overflow-hidden">
+    <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      <div className="text-center mb-12">
+        <div className="inline-flex items-center mb-4 px-3 py-1 rounded-full border border-border text-sm font-medium">
+          <Star className="w-3 h-3 mr-1" />
+          Why Choose Mesh?
+        </div>
 
-    <div className="space-y-2">
-      <h2 className="text-xl font-medium">Resources to learn more and go deeper</h2>
-      <h3 className="text-fd-muted-foreground">
-        Whether you're a new or seasoned full-stack developer, these guides and resources are here to help you.
-      </h3>
-      <Link className="underline underline-offset-6" href="/apis/resources">Check out resources ></Link>
+        <h2 className="font-heading font-bold text-3xl lg:text-4xl mb-4">
+          Built for Modern Web3 Development
+        </h2>
+
+        <p className="text-lg max-w-2xl mx-auto">
+          Here are a few reasons why developers love building with Mesh
+        </p>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-8">
+        <Card className="transition-all duration-500 hover:shadow-xl hover:shadow-primary/10 hover:scale-105 group bg-gradient-to-br from-background to-card">
+          <CardHeader>
+            <div className="w-12 h-12 bg-gradient-to-br from-primary/20 to-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+              <Zap className="w-6 h-6 text-primary group-hover:animate-pulse" />
+            </div>
+            <CardTitle className="font-heading group-hover:text-primary transition-colors duration-300">
+              Always Up to Date
+            </CardTitle>
+            <CardDescription>
+              Mesh is developed closely to network updates. Your application will always be ready for the latest
+              network changes.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+
+        <Card className="transition-all duration-500 hover:shadow-xl hover:shadow-primary/10 hover:scale-105 group bg-gradient-to-br from-background to-card">
+          <CardHeader>
+            <div className="w-12 h-12 bg-gradient-to-br from-primary/20 to-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+              <Code className="w-6 h-6 text-primary group-hover:animate-pulse" />
+            </div>
+            <CardTitle className="font-heading group-hover:text-primary transition-colors duration-300">
+              Simple to Use
+            </CardTitle>
+            <CardDescription>
+              Getting started with dApp development has never been this easy. Mesh facilitates and speeds up
+              development.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+
+        <Card className="transition-all duration-500 hover:shadow-xl hover:shadow-primary/10 hover:scale-105 group bg-gradient-to-br from-background to-card">
+          <CardHeader>
+            <div className="w-12 h-12 bg-gradient-to-br from-primary/20 to-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+              <Shield className="w-6 h-6 text-primary group-hover:animate-pulse" />
+            </div>
+            <CardTitle className="font-heading group-hover:text-primary transition-colors duration-300">
+              Best Practices
+            </CardTitle>
+            <CardDescription>
+              Follows many CIPs for interoperability. Less than 60kB means your application is fast and responsive.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
     </div>
-  </div>
+  </section>
+
+  <section className="py-16 sm:py-20 lg:py-32 xl:py-36 relative">
+    <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="grid lg:grid-cols-2 gap-12 items-center">
+        <div className="animate-fade-in-left">
+          <div className="inline-flex items-center mb-4 px-3 py-1 rounded-full border border-border text-sm font-medium">
+            <img className="w-4 h-4 mr-1" src="icons/react.svg" alt="react-logo" />
+            React Components
+          </div>
+
+          <h2 className="font-heading font-bold text-3xl lg:text-4xl mb-6">
+            Frontend Components & React Hooks
+          </h2>
+          <p className="text-lg mb-6">
+            Mesh provides everything you need to bring your Web3 user interface to life with ready-to-use components
+            and hooks.
+          </p>
+          <div className="space-y-4">
+            {[
+              { icon: RocketLaunchIcon, text: "Getting Started with React", link: "/react/getting-started" },
+              { icon: PaintBrushIcon, text: "UI Components", link: "/react/ui-components" },
+              { icon: BoltIcon, text: "Wallet Hooks", link: "/react/wallet-hooks" },
+            ].map((item, index) => (
+              <Link
+                key={index}
+                className="flex items-center space-x-3 group hover:translate-x-2 transition-transform duration-300 cursor-pointer"
+                href={item.link}
+              >
+                <div className="w-2 h-2 bg-gradient-to-r from-primary to-secondary rounded-full group-hover:scale-150 transition-transform duration-300"></div>
+                <item.icon className="w-4 h-4 text-primary" />
+                <span className="group-hover:text-primary transition-colors duration-300">{item.text}</span>
+                <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <Card className="transition-all duration-500 hover:shadow-xl hover:shadow-primary/10 hover:scale-105 group bg-gradient-to-br from-background to-card">
+          <CardHeader>
+            <div className="w-40 h-8 bg-gradient-to-br from-primary/20 to-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+              connectWallet.tsx
+            </div>
+            <CardDescription>
+              ```tsx
+                import { CardanoWallet } from '@meshsdk/react';
+
+                export default function Page() {
+                  return (
+                    <>
+                      <CardanoWallet
+                        label={"Connect a Wallet"}
+                        persist={true}
+                        onConnected={()=>{console.log('on connected')}}
+                      />
+                    </>
+                  );
+                }
+              ```
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    </div>
+  </section>
+
+  <section className="py-16 sm:py-20 lg:py-32 xl:py-36 relative">
+    <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="grid lg:grid-cols-2 gap-12 items-center">
+        <div className="animate-fade-in-left">
+          <div className="inline-flex items-center mb-4 px-3 py-1 rounded-full border border-border text-sm font-medium">
+            <WalletIcon className="w-4 h-4 mr-1" />
+            Wallet Integration
+          </div>
+
+          <h2 className="font-heading font-bold text-3xl lg:text-4xl mb-6">
+            Universal Wallet Support
+          </h2>
+          <p className="text-lg mb-6">
+            Mesh Wallet provides APIs to interact with Cardano. Its transaction builder works with cardano-cli wallets, seed phrases, private keys, and CIP wallets, making it easy to build scripts or multi-signature apps.
+          </p>
+        </div>
+
+        <Card className="transition-all duration-500 hover:shadow-xl hover:shadow-primary/10 hover:scale-105 group bg-gradient-to-br from-background to-card">
+          <CardHeader>
+            <div className="w-40 h-8 bg-gradient-to-br from-primary/20 to-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+              meshWallet.tsx
+            </div>
+            <CardDescription className="wrap-anywhere">
+              ```tsx
+                import { MeshWallet } from '@meshsdk/core';
+
+                const wallet = new MeshWallet({
+                  networkId: 0, // 0: testnet, 1: mainnet
+                  fetcher: provider,
+                  submitter: provider,
+                  key: {
+                    type: 'mnemonic',
+                    words: ["solution","solution",...,"solution"],
+                  },
+                });
+              ```
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    </div>
+  </section>
+
+  <section className="py-16 sm:py-20 lg:py-32 xl:py-36 relative">
+    <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="text-center mb-16">
+        <h2 className="font-heading font-bold text-3xl lg:text-4xl mb-4">Integrate with Services</h2>
+        <p className="text-xl max-w-2xl mx-auto">
+          Choose between multiple providers to access blockchain data and services
+        </p>
+      </div>
+
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { name: "Blockfrost", description: "Featuring over 100 APIs tailored for easy access to Cardano blockchain", icon: "providers/blockfrost.png"},
+          { name: "Hydra Provider (beta)", description: "Layer 2 scaling solution for Cardano that increases transaction throughput and ensures cost efficiency while maintaining security.", icon: "providers/hydra.svg" },
+          { name: "Maestro", description: "Advanced UTxO-indexing data layer to supercharge Defi on Bitcoin, Cardano & Dogecoin", icon: "providers/maestro.png"},
+          { name: "Ogmios", description: "Lightweight bridge interface for cardano-node that offers WebSockets API that enables local clients to speak Ouroboros' mini-protocols", icon: "providers/ogmios.png"},
+          { name: "UTxORPC", description: "Highly efficient through gRPC, using a compact and high-performance binary format", icon: "providers/utxo-rpc.png"},
+          { name: "Yaci", description: "Custom Cardano devnet to tailor your devnet needs with a builtin indexer and custom viewer for devnet", icon: "providers/yaci.png"},
+          { name: "Offline Fetcher", description: "An offline blockchain data provider for testing, development and offline scenarios.", icon: "maestro.png"},
+          { name: "Offline Evaluator", description: "Advanced UTxO-indexing data layer to supercharge Defi on Bitcoin, Cardano & DogecoinAn offline Plutus script evaluator for testing and validation.", icon: "maestro.png"},
+        ].map((provider) => (
+          <Card key={provider.name} className="text-center hover:border-primary/50 transition-colors px-4 py-8">
+              <CardTitle className="font-heading">{provider.name}</CardTitle>
+              <CardDescription>{provider.description}</CardDescription>
+          </Card>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section className="py-16 sm:py-20 lg:py-32 xl:py-36 relative">
+    <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="text-center mb-16">
+        <h2 className="font-heading font-bold text-3xl lg:text-4xl mb-4">Start building with Mesh</h2>
+        <p className="text-xl max-w-2xl mx-auto">
+          Mesh gives you ready-to-use utilities for transactions, wallets, and tokens on Cardano. Check the docs or try an example to see it in action.
+        </p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <Link
+            href="https://github.com/MeshJS/examples"
+            className={cn(
+              buttonVariants({ size: 'lg', color: 'primary' }),
+              'rounded-xl px-10 py-4 text-lg font-semibold flex items-center justify-center gap-2 transition-all duration-500 group hover:shadow-xl hover:shadow-primary/10 hover:scale-105'
+            )}
+          >
+            Try an Example
+            <ArrowRight className="ml-2 w-5 h-5" />
+          </Link>
+
+          <Link
+            href="https://docs.meshjs.dev/"
+            className={cn(
+              buttonVariants({ size: 'lg', color: 'secondary' }),
+              'rounded-xl px-10 py-4 text-lg font-semibold flex items-center justify-center gap-2 transition-all duration-500 hover:shadow-xl hover:shadow-primary/10 hover:scale-105 group bg-gradient-to-br from-background to-card'
+            )}
+          >
+            <Globe className="mr-2 w-5 h-5" />
+            Read the Docs
+          </Link>
+        </div>
+      </div>
+  </section>
 </main>

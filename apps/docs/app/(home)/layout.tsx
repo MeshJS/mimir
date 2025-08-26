@@ -309,26 +309,6 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
   <AISidebarProvider>
     <div className="flex flex-col">
-      <Banner
-        id="mesh-banner"
-        variant="rainbow"
-        className='border'
-        rainbowColors={[
-          '#232323',
-          'white',
-          'transparent',
-        ]}
-      >
-        🎉 Mesh now provides LLMs.txt to give you better AI coding assistance for Cardano development. You can find it at
-          <Link
-            href="/llms.txt"
-            className="underline underline-offset-4 decoration-2 ml-1"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            /llms.txt
-          </Link>
-      </Banner>
       <HomeLayout
         {...baseOptions}
         searchToggle={{

@@ -176,7 +176,7 @@ function List(props: Omit<ComponentProps<'div'>, 'dir'>) {
       ref={containerRef}
       {...props}
       className={cn(
-        'fd-scroll-container overflow-y-auto max-h-[calc(100dvh-164px)] min-w-0 flex flex-col',
+        'fd-scroll-container overflow-y-auto max-h-screen min-w-0 flex flex-col',
         props.className,
       )}
     >
@@ -328,13 +328,9 @@ export function AISearch(props: DialogProps) {
             </List>
           ) : (
             <List
-              className="flex-1 overflow-y-auto"
-              style={{
-                maskImage:
-                  'linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent)',
-              }}
+              className="flex-1 items-center justify-center"
             >
-              <div className="flex flex-col gap-4 p-3 min-h-screen items-center justify-center">
+              <div className="flex flex-col gap-4 p-3">
                 No messages yet. Ask Mesh AI a question!
               </div>
             </List>
