@@ -17,8 +17,12 @@ from app.db.client import get_db_client
 from app.utils.checksum import calculate_checksum
 from app.utils.extract_title import extract_chunk_title
 
+openai_api_key = os.getenv("OPENAI_KEY") or None
+if openai_api_key is None:
+  raise ValueError("OpenAI api key is missing")
+
 router = APIRouter()
-openai_service = OpenAIService()
+openai_service = OpenAIService(openai_api_key=openai_api_key)
 security = HTTPBearer()
 
 ###########################################################################################################
