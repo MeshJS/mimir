@@ -45,11 +45,11 @@ Example response:
 
 ## Connect Wallet
 
-This is the entrypoint to start communication with the user's wallet. The wallet should request the user's permission to connect the web page to the user's wallet, and if permission has been granted, the wallet will be returned and exposing the full API for the app to use.
+This is the entry point to start communication with the user's wallet. The wallet should request the user's permission to connect the web page to the user's wallet, and if permission has been granted, the wallet will be returned, exposing the full API for the app to use.
 
 Query `BrowserWallet.getAvailableWallets()` to get a list of available wallets, then provide the wallet `name` for which wallet the user would like to connect with.
 
-You can also provide an `extensions` object to enable specific CIPs. For Example response, to enable CIP95, you would pass:
+You can also provide an `extensions` object to enable specific CIPs. For example, to enable CIP95, you would pass:
 
 ```tsx
 await BrowserWallet.enable('eternl', [95]);
@@ -126,9 +126,9 @@ Applications can use this API to manage transaction outputs effectively, ensurin
 
 ## Get Collateral
 
-This API retrieves a list of UTXOs (unspent transaction outputs) controlled by the wallet that can be used as collateral inputs for transactions involving Plutus scripts. The returned UTXOs must meet or exceed the specified ADA value target.
+This API retrieves a list of UTXOs (unspent transaction outputs), controlled by the wallet, that can be used as collateral inputs for transactions involving Plutus scripts. The returned UTXOs must meet or exceed the specified ADA value target.
 
-If the target cannot be met, an error message will be returned explaining the issue. Wallets may return UTXOs with a greater total ADA value than requested but must never return UTXOs with a smaller total value.
+If the target cannot be met, an error message will be returned explaining the issue. Wallets may return UTXOs with a greater total ADA value than requested, but must never return UTXOs with a smaller total value.
 
 This functionality is essential for applications that need to create transactions requiring collateral inputs.
 
@@ -293,7 +293,7 @@ Example response:
 
 ## Sign Data
 
-This endpoint utilizes the CIP-8 - Message Signing to sign arbitrary data, to verify the data was signed by the owner of the private key.
+This endpoint uses CIP-8 message signing to sign arbitrary data and verify that the signature comes from the holder of the corresponding private key.
 
 `signData` takes two arguments, the first one is the payload to sign and the second one is the address (optional).
 
@@ -319,7 +319,7 @@ Example response:
 }
 ```
 
-Continue reading this guide to learn how to verify the signature.
+Check out [this guide](https://meshjs.dev/guides/prove-wallet-ownership#server-verify-signature) to learn how to verify the signature.
 
 
 ## Sign Transaction
@@ -335,15 +335,13 @@ Requests user to sign the provided transaction (`tx`). The wallet should ask the
   const signedTx = await wallet.signTx(tx, partialSign?);
   ```
 
-  Check out Transaction to learn more on how to use this API.
+  Check out [Transaction](https://docs.meshjs.dev/transactions) to learn more on how to use this API.
 </Card>
 
 
 ## Submit Transaction
 
-Wallets inherently have the ability to submit transactions. This API allows applications to request the wallet to send a transaction. If the wallet accepts the transaction and successfully sends it, it will return the transaction ID, enabling the application to track its status. In case of errors during submission, the wallet will provide error messages or failure details.
-
-This functionality is useful for applications that need to interact with the blockchain by submitting signed transactions through the user's wallet.
+This API lets applications ask a wallet to submit signed transactions. On success, the wallet returns a transaction ID for tracking. On failure, it returns error details.
 
 <Card>
   #### Submit Transaction [!toc]
@@ -354,13 +352,13 @@ This functionality is useful for applications that need to interact with the blo
   const txHash = await wallet.submitTx(signedTx);
   ```
 
-  Check out Transaction to learn more on how to use this API.
+  Check out [Transaction](https://docs.meshjs.dev/transactions) to learn more on how to use this API.
 </Card>
 
 
 ## Get Assests
 
-Returns a list of assets in wallet excluding lovelace.
+Returns a list of assets in the wallet, excluding lovelace.
 
 <Card>
   #### Get Assets [!toc]
@@ -402,7 +400,7 @@ Applications can use this information to display the wallet's balance or perform
 <Card>
   #### Get Lovelace [!toc]
 
-  Get amount of ADA in connected wallet
+  Get amount of ADA in the connected wallet
 
   ```tsx
   await wallet.getLovelace();
