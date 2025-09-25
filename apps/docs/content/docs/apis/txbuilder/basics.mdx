@@ -5,7 +5,7 @@ icon: PaperAirplaneIcon
 ---
 import Link from 'fumadocs-core/link';
 
-In the code snippet, you will find `txBuilder`, which is an instance of `MeshTxBuilder`, a powerful low-level APIs that allows you to build transactions. Learn how to initialize **MeshTxBuilder**.
+In the code snippet, you will find `txBuilder`, which is an instance of `MeshTxBuilder`, with powerful low-level APIs that allow you to build transactions. Here's how to initialize **MeshTxBuilder**.
 
 ```tsx
 const txBuilder = new MeshTxBuilder({
@@ -21,7 +21,7 @@ In this page, we will cover how to initialize the `MeshTxBuilder` and the basic 
 
 ## Initialize Tx Builder
 
-To start building an customized transaction, you need to first initialize `MeshTxBuilder`:
+To start building a customized transaction, you need to first initialize `MeshTxBuilder`:
 
 ```tsx
 import { BlockfrostProvider, MeshTxBuilder } from "@meshsdk/core";
@@ -48,7 +48,7 @@ The `MeshTxBuilder` instance has the following signature:
 }
 ```
 
-There are 6 optional fields to pass in to initialized the lower level APIs instance:
+There are 6 optional fields to pass in when initializing a new instance:
 
 - `serializer`: The default serializer is `CSLSerializer`. You can pass in your own serializer instance.
 - `fetcher`: When you build the transaction without sufficient fields as required by the serialization library, we would index the blockchain to fill the information for you. Affected APIs are `txIn`, `txInCollateral`, `spendingTxInReference`.
@@ -61,15 +61,15 @@ There are 6 optional fields to pass in to initialized the lower level APIs insta
 
 ## Send Value
 
-Sending value with `MeshTxBuilder` come with the `.txOut()` endpoint:
+Sending value with `MeshTxBuilder` is done using the `.txOut()` endpoint:
 
 ```tsx
 .txOut(address: string, amount: Asset[])
 ```
 
-In order to send values (so as every transaction), we have to fund the transaction to do so. There are 2 ways to provide values in a transaction:
+To send value in a transaction, you must first fund it. There are 2 ways:
 
-- Specifying which input to spend with
+- Specifying which input to spend
 
 ```tsx
 .txIn(txHash: string, txIndex: number, amount?: Asset[], address?: string)
@@ -82,7 +82,7 @@ In order to send values (so as every transaction), we have to fund the transacti
 .selectUtxosFrom(extraInputs: UTxO[])
 ```
 
-Since the input and output values might not be the same, we have to specify the address (usually own's address) to receive change:
+Since the input and output values might not be the same, we have to specify the address (usually the wallet's own address) to receive the change:
 
 ```tsx
 .changeAddress(addr: string)
@@ -162,7 +162,7 @@ await wallet.signTx(unsignedTx, true);
 <Card>
   ### Multi-signature Transaction [!toc]
 
-  Create a multi-signature transaction. In this demo, we will create a transaction with two signatures, where one signature is from the user wallet and the other is from a minting wallet.
+  Create a multi-signature transaction. In this demo, we will create a transaction with two signatures, where one signature is from the user's wallet and the other is from a minting wallet.
 
   ```tsx
   const mintingWallet = new MeshWallet({
@@ -335,21 +335,21 @@ The second parameter of `selectUtxosFrom` is the strategy to be used for selecti
 
 We may introduce more strategies in the future. Check the <Link href="https://docs.meshjs.dev/"> Mesh Docs</Link> for more details.
 
-The `threshold` parameter is used to specify the minimum amount of lovelace to be selected. You may specify a larger amount to if the transactions requires it.
+The `threshold` parameter is used to specify the minimum amount of lovelace to be selected. You may specify a larger amount too if the transactions requires it.
 
 The last parameter is `includeTxFees` which is a boolean value to include transaction fees in the selection.
 
 
-## Set Metadata - Taransaction message
+## Set Metadata - Transaction message
 
-Add messages / comments / memos as transaction metadata. This is useful for attaching additional information to a transaction. This is an example of setting metadata with transaction message.
+Add messages / comments / memos as transaction metadata. This is useful for attaching additional information to a transaction. This is an example of setting a metadata with transaction message.
 
 ```tsx
 txBuilder
   .metadataValue(label, metadata)
 ```
 
-The specification for the individual strings follow the general design specification for JSON metadata, which is already implemented and in operation on the cardano blockchain. The used metadatum label is `674`: this number was chosen because it is the T9 encoding of the string `msg`. The message content has the key `msg`: and consists of an array of individual message-strings. The number of theses message-strings must be at least one for a single message, more for multiple messages/lines. Each of theses individual message-strings array entries must be at most 64 bytes when UTF-8 encoded.
+The specification for individual strings follows the general JSON metadata design, which is currently used on the Cardano blockchain. The used metadatum label is `674`: this number was chosen because it is the T9 encoding of the string `msg`. The message content has the key `msg`: and consists of an array of individual message-strings. The number of theses message-strings must be at least one for a single message, more for multiple messages/lines. Each of theses individual message-strings array entries must be at most 64 bytes when UTF-8 encoded.
 
 <Card>
   ### Transaction message [!toc]
@@ -415,14 +415,14 @@ let dateTimeAdd5Min = new Date(nowDateTime.getTime() + minutes*60000);
 const slot = resolveSlotNo('mainnet', dateTimeAdd5Min.getTime());
 ```
 
-Next, we set the TTL with `invalidHereafter` and providing the `slot`, this means that if the transaction is submitted after after `slot` will not be valid.
+Next, we set the TTL by calling `invalidHereafter(slot)`. A transaction submitted after this value is invalid:
 
 ```tsx
 txBuilder
   .invalidHereafter(Number(slot));
 ```
 
-Likewise, we can set a "validity start interval" for the transaction, where it is the time the transaction will be valid. We can define the start time with `invalidBefore` and providing the `slot`:
+Likewise, we can call `invalidBefore(slot)` to specify the validity start interval. A transaction submitted before this value is invalid:
 
 ```tsx
 txBuilder
@@ -434,7 +434,7 @@ txBuilder
 
 Sets the network to use, this is mainly to know the cost models to be used to calculate script integrity hash. You can set the network for the transaction with `setNetwork`.
 
-`
+```tsx
 txBuilder.setNetwork(network: Network)
 ```
 
@@ -447,7 +447,7 @@ The network parameter is a string that can be one of the following:
 
 ## Set Fee
 
-Set the fee for the transaction.
+Set the fee for the transaction in lovelace. 
 
 ```tsx
 .setFee(fee: string)
