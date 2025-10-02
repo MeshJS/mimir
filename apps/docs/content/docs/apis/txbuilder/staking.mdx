@@ -4,7 +4,7 @@ description: "Transactions for delegating ADA and managing stakepools"
 icon: ArrowsPointingInIcon
 ---
 
-In the code snippet, you will find `txBuilder`, which is an instance of `MeshTxBuilder`, a powerful low-level APIs that allows you to build transactions. Learn how to initialize MeshTxBuilder.
+In the code snippet, you will find `txBuilder`, which is an instance of `MeshTxBuilder`, with powerful low-level APIs that allow you to build transactions. Here's how to initialize **MeshTxBuilder**.
 
 ```tsx
 const txBuilder = new MeshTxBuilder({
@@ -15,7 +15,7 @@ const txBuilder = new MeshTxBuilder({
 
 ## Register Stake Address
 
-Same as Transaction, with `MeshTxBuilder` you have to register a stake address before delegate to stakepools. Here's the 2 APIs you need:
+Same as Transaction, with `MeshTxBuilder`, you have to register a stake address before delegating to stakepools. Here are the 2 APIs you need:
 
 ```tsx
 txBuilder
@@ -23,7 +23,7 @@ txBuilder
   .delegateStakeCertificate(rewardAddress, poolIdHash)
 ```
 
-Since we need to provide the deserilized hash of pool id, we can use the following util to get it:
+Since we need to provide the deserialize hash of pool ID, we can use the following util to get it:
 
 ```tsx
 const poolIdHash = deserializePoolId(
@@ -34,7 +34,7 @@ const poolIdHash = deserializePoolId(
 <Card>
   ### Register Stake Address [!toc]
 
-  Register a stake address before delegate to stakepools.
+  Register a stake address before delegating to a stakepool.
 
   **Pool ID**
   `pool107k26e3wrqxwghju2py40ngngx2qcu48ppeg7lk0cm35jl2aenx`
@@ -70,7 +70,7 @@ const poolIdHash = deserializePoolId(
 
 ## Delegate Stake
 
-Delegation with `MeshTxBuilder` is exactly the same as first delegate, but without registering stake key, so only one API is needed:
+Stake delegation with `MeshTxBuilder` is the same as the first delegate, but without registering the stake key, so only one API call is needed:
 
 ```tsx
 txBuilder
@@ -115,7 +115,7 @@ txBuilder
 
 ## Withdraw Rewards
 
-Withdrawal with `MeshTxBuilder` comes with only one API, to specify the reward address and the amount to withdraw.
+Use MeshTxBuilder’s withdrawal method to specify the reward address and amount.
 
 - rewardAddress (string) - the reward address to withdraw from
 - lovelace (number) - the amount to withdraw in Lovelace
@@ -161,7 +161,7 @@ txBuilder
 
 ## Deregister Stake
 
-Deregister a stake address. The function accepts the following parameters:
+To deregister a stake address with MeshTxBuilder, use the following method:
 
 - rewardAddress (string) - the bech32 reward address to deregister
 
@@ -204,7 +204,7 @@ txBuilder
 
 ## Script Withdrawal - Supporting Withdraw Zero
 
-Withdrawal from script is supported by `MeshTxBuilder` with this set of APIs:
+Withdrawal from a script is supported by `MeshTxBuilder` with this set of APIs:
 
 ```tsx
 txBuilder
@@ -216,7 +216,7 @@ txBuilder
 
 **Withdraw Zero**
 
-With that capability, it supports a Cardano technique - withdraw zero - which is a technique to trigger withdrawal script validation without actually withdrawing any value. This is a technique to help boost script ExUnits performance especially comes to validating multiple script inputs. In order to perform withdraw zero, 2 steps are involved:
+This is a technique commonly used on Cardano to prove control of a stake key without actually withdrawing any rewards from its withdrawal account. To perform a "withdraw zero", you have to follow these steps:
 
 - Register script stake key
 
