@@ -5,9 +5,9 @@ icon: NewspaperIcon
 ---
 import Link from "fumadocs-core/link";
 
-In this guide, you will understand all logics you need to know for interacting with smart contracts with `MeshTxBuilder`.
+In this guide, you will understand how to interact with smart contracts through `MeshTxBuilder`.
 
-In the code snippet, you will find `txBuilder`, which is an instance of `MeshTxBuilder`, a powerful low-level APIs that allows you to build transactions. Learn how to initialize MeshTxBuilder.
+In the code snippet, you will find `txBuilder`, which is an instance of `MeshTxBuilder`, with powerful low-level APIs that allow you to build transactions. Here's how to initialize **MeshTxBuilder**.
 
 ```tsx
 const txBuilder = new MeshTxBuilder({
@@ -16,7 +16,7 @@ const txBuilder = new MeshTxBuilder({
 });
 ```
 
-In Cardano, whenever you need the nodes' computing power to execute a smart contract, you need to provide collateral to prevent spamming. You will see this is everywhere when script execution is needed in below's examples, and here's how you can do so:
+In Cardano, whenever you need the nodes' computing power to execute a smart contract, you need to provide collateral to prevent spamming. You will see this is everywhere when script execution is needed in examples below, and here's how you can do so:
 
 ```tsx
 txBuilder
@@ -28,7 +28,7 @@ txBuilder
 
 Locking assets meaning sending value to a script address with datum.
 
-Same as `Transaction` demo, we will lock selected assets from your wallet in an `always succeed` smart contract. We use one API to represent sending value, another API to represent attaching datum to complete the locking assets process:
+Same as the `Transaction` demo, we will lock selected assets from your wallet in an always-succeed smart contract. We use one API to represent sending value, another API to represent attaching datum to complete the locking assets process:
 
 ```tsx
 // For inline datumtxBuilder
@@ -90,7 +90,7 @@ The lower level APIs support providing your datum in all Mesh `Data` (default), 
 
 ## Unlock Assets
 
-Unlocking with `MeshTxBuilder` starts with anyone of the below script version indicators:
+Unlocking assets from a Plutus script, with `MeshTxBuilder`, starts with any of the following script version indicators:
 
 ```tsx
 .spendingPlutusScriptV1()
@@ -220,7 +220,7 @@ txBuilder
 
 ## Minting Assets with Plutus Script
 
-Minting Plutus tokens with `MeshTxBuilder` starts with anyone of the below script version indicators:
+Minting Plutus tokens with `MeshTxBuilder` starts with any of the following script version indicators:
 
 ```tsx
 .mintPlutusScriptV1()
