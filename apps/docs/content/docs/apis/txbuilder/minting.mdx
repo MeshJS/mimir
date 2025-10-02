@@ -9,9 +9,9 @@ Minting and burning assets with Native Script and Plutus Script
 
 Minting and burning assets is a common operation in blockchain applications. In the Cardano ecosystem, minting and burning are achieved through Native Scripts and Plutus Scripts.
 
-To view a video demonstration of this feature of the MeshSDK, navigate to the video guide <Link href="/apis//guides/nft-collection">Mint an NFT Collection</Link>.
+To view a video demonstration of this feature of the MeshSDK, navigate to the video guide <Link href="/guides/nft-collection">Mint an NFT Collection</Link>.
 
-In the code snippet, you will find `txBuilder`, which is an instance of `MeshTxBuilder`, a powerful low-level APIs that allows you to build transactions. Learn how to initialize MeshTxBuilder.
+In the code snippet, you will find `txBuilder`, which is an instance of `MeshTxBuilder`, with powerful low-level APIs that allow you to build transactions. Here's how to initialize **MeshTxBuilder**.
 
 ```tsx
 const txBuilder = new MeshTxBuilder({
@@ -25,7 +25,7 @@ In this page, you will find the APIs to create transactions for minting and burn
 
 ## Minting with One Signature
 
-In this section, we will see how to mint native assets with a `MeshTxBuilder`. For minting assets with smart contract, visit MeshTxBuilder - Smart Contract - Minting Assets with Smart Contract.
+In this section, we will see how to mint native assets with a `MeshTxBuilder`. For minting assets with a smart contract visit [this documentation](https://meshjs.dev/apis/txbuilder/smart-contracts#minting-assets-with-plutus-script).
 
 Firstly, we need to define the `forgingScript` with `ForgeScript`. We use the first wallet address as the "minting address" (you can use other addresses).
 
@@ -49,7 +49,7 @@ const tokenNameHex = stringToHex(tokenName);
 const metadata = { [policyId]: { [tokenName]: { ...demoAssetMetadata } } };
 ```
 
-Finally, we create a transaction and mint the asset with the lower level APIs.
+Finally, we create a transaction and mint the asset with the `MeshTxBuilder` lower level APIs.
 
 ```tsx
 const txBuilder = new MeshTxBuilder({
@@ -68,12 +68,13 @@ const unsignedTx = await txBuilder
 <Card>
   ### Mint Asset
 
-  Mint an asset with a ntive script
+  Mint an asset with a native script
 
   ```tsx
   import { MeshTxBuilder, ForgeScript, resolveScriptHash, stringToHex } from '@meshsdk/core';
   import type { Asset } from '@meshsdk/core';
 
+  // See https://meshjs.dev/apis/wallets/meshwallet for how to create a new wallet instance
   const utxos = await wallet.getUtxos();
   const changeAddress = await wallet.getChangeAddress();
   const forgingScript = ForgeScript.withOneSignature(changeAddress);
@@ -127,7 +128,7 @@ for (let i = 1; i < 3; i++) {
 }
 ```
 
-You appending the metadata into one object and pass it to `metadataValue()` method.
+You add the metadata object by calling the `metadataValue()` method.
 
 ```tsx
 const txBuilder = new MeshTxBuilder({
@@ -153,6 +154,7 @@ const txHash = await wallet.submitTx(signedTx);
   ```tsx
   import { MeshTxBuilder, ForgeScript, resolveScriptHash, stringToHex } from '@meshsdk/core';
   import type { Asset } from '@meshsdk/core';
+  import { useWallet } from "@meshsdk/react";
 
   const { wallet, connected } = useWallet();
 
@@ -202,7 +204,7 @@ const address = usedAddress[0];
 const forgingScript = ForgeScript.withOneSignature(address);
 ```
 
-Then, we resolve the policy ID and hex of token name, setting set `txBuilder.mint("-1", policyId, tokenNameHex)`
+Then, we resolve the policy ID and hex of the token name by calling `txBuilder.mint("-1", policyId, tokenNameHex)`
 
 ```tsx
 const policyId = resolveScriptHash(forgingScript);
@@ -267,9 +269,9 @@ const unsignedTx = await txBuilder
 
 ## Minting Assets with Native Script
 
-The above minting and burning one signature are indeed the mint and burn with native script examples. Here we would explain the logic you need to know for native script minting.
+The minting and burning examples above demonstrate using a one-signature native script. Here we explain the underlying logic for native script minting.
 
-With `MeshTxBuilder`, you just need `.mint()` and provide script to mint or burn native script tokens:
+With `MeshTxBuilder`, you just need to call `.mint()` and provide a script to mint or burn native script tokens:
 
 ```tsx
 txBuilder
@@ -277,7 +279,7 @@ txBuilder
   .mintingScript(forgingScript)
 ```
 
-On top on these 2 core logics, you can attach metadata if needed with `.metadataValue()`, and construct the transaction as needed.
+On top of these two core steps, you can attach metadata with .metadataValue() and then construct the transaction as needed.
 
 <Card>
   ### Mint Assets with Native Script [!toc]
@@ -333,7 +335,7 @@ On top on these 2 core logics, you can attach metadata if needed with `.metadata
 
 ## Minting Assets with Plutus Script
 
-Minting Plutus tokens with `MeshTxBuilder` starts with anyone of the below script version indicators:
+Plutus script minting with `MeshTxBuilder` starts with any of the below script version indicators:
 
 ```tsx
 .mintPlutusScriptV1()
@@ -347,11 +349,11 @@ Followed by specifying the minting information:
 .mint(quantity: string, policy: string, name: string)
 ```
 
-Similar to unlocking assets, minting or burning Plutus tokens require providing redeemer and scripts. However, no datum information is needed in minting or burning.
+Similar to unlocking, minting or burning tokens, the Plutus script requires providing a redeemer and the script itself. However, no datum information is needed in minting or burning.
 
-**Script of the token**
+**Providing a Script**
 
-The actual script can be either provided by transaction builder or referenced from an UTxO onchain.
+The actual script can be either provided through `mintTxInReference` method by attaching an on-chain UTxO reference, or by providing a Cbor encoded script.
 
 - (i) Reference script
 ```tsx
@@ -363,7 +365,7 @@ The actual script can be either provided by transaction builder or referenced fr
 .mintingScript(scriptCbor: string)
 ```
 
-**Redeemer of the mint**
+**Minting Redeemer**
 
 Redeemer can be provided in different **data types**. If your MeshTxBuilder does not include an `evaluator` instance, you can also provide your budget for the unlock with this redeemer endpoint
 
@@ -417,7 +419,9 @@ Redeemer can be provided in different **data types**. If your MeshTxBuilder does
 
 ## Minting Assets with CIP-68 Metadata standard
 
-Minting CIP-68 tokens with `MeshTxBuilder` means 2 consecutive sets of minting APIs. The first is to mint the 100 token, and the second is the mint the 222 tokens:
+Minting CIP-68 tokens with `MeshTxBuilder` means 2 consecutive sets of minting APIs. The first is to mint the token with the `100` label, and the second is to mint the token with the `222` label:
+
+
 
 ```tsx
 txBuilder
@@ -523,9 +527,9 @@ A side note, Mesh also provides the utility function of `CIP68_100(tokenNameHex:
 
 ## Minting Royalty Token
 
-Royalty tokens is a special type of token that allows the creator to collect a royalty fee, this proposed standard will allow for uniform royalties' distributions across the secondary market space. Read CIP-27 for more information.
+Royalty tokens are a special type of token that allow the creator to collect a royalty fee. This proposed standard will allow for uniform royalty distributions across the secondary market space. Read CIP-27 for more information.
 
-The implementation of royalty tokens is very simple, minting a token with `777` label, with "rate" and "addr" in the metadata.
+The implementation of royalty tokens is very simple – minting a token with the `777` label, with "rate", and "addr" in the metadata.
 
 Here is the example of the metadata:
 
