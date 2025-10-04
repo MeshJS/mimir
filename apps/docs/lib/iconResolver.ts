@@ -4,9 +4,8 @@ import { createElement } from 'react';
 import type { ReactElement } from 'react';
 
 const invertIcons = [
-  "icons/mesh.svg",
+  "icons/utxos-white.png",
   "icons/midnight.svg",
-  "icons/polkadot.svg"
 ]
 
 export function iconResolver(iconName?: string | null, className: string = ""): ReactElement | undefined {

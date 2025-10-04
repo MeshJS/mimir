@@ -287,7 +287,7 @@ export function AISearch(props: DialogProps) {
         }}
         onInteractOutside={(e) => e.preventDefault()}
         aria-describedby={undefined}
-        className="flex flex-col h-full w-full bg-fd-popover/80 backdrop-blur-xl p-1 rounded-2xl shadow-2xl border max-md:top-12 md:bottom-12 max-w-screen-sm focus-visible:outline-none"
+        className="flex flex-col h-full w-full bg-transparent dark:bg-transparent backdrop-blur-3xl p-1 border max-md:top-12 md:bottom-12 max-w-screen-sm focus-visible:outline-none"
       >
         <ChatContext value={chat}>
           <div className="px-3 py-2">

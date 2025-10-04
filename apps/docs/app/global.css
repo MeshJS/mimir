@@ -59,3 +59,61 @@
     @apply bg-background text-foreground;
   }
 }
+
+#nd-sidebar {
+  background: transparent;
+  backdrop-filter: blur(48px);
+  padding: 0.25rem;
+}
+
+.dark #nd-sidebar {
+  background: transparent;
+}
+
+.dark body {
+  background:
+  radial-gradient(
+  300% 150% at -50% 0%,
+  rgba(255, 255, 255, 0.35) 0%,
+  transparent 35%
+  ),
+  radial-gradient(
+  150% 150% at 100% -10%,
+  rgba(0, 0, 0, 0.7) 0%,
+  transparent 40%
+  ),
+  radial-gradient(
+  250% 120% at 110% 50%,
+  rgba(255, 255, 255, 0.15) 0%,
+  transparent 45%
+  ),
+  radial-gradient(
+  150% 100% at 50% 100%,
+  rgba(0, 0, 0, 0.3) 0%,
+  transparent 50%
+  ),
+  #181818 !important;
+
+  background-attachment: fixed;
+  position: relative;
+}
+
+html.dark body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+
+  background-image:
+  repeating-radial-gradient(
+  circle at center,
+  rgba(255, 255, 255, 0.3) 2px,
+  transparent 3px
+  );
+
+  background-size: 4px 4px;
+  mix-blend-mode: overlay;
+  opacity: 0.8;
+  pointer-events: none;
+  filter: blur(0.3px);
+}

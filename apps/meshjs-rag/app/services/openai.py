@@ -19,6 +19,22 @@ Please give a short succinct context to situate this chunk within the overall do
 Answer only with the succinct context and nothing else.
 """
 
+AI_PROMPT = """
+You are a MeshJS expert assistant. Help developers with MeshJS questions using the provided context. Use the documentation context to answer questions about MeshJS and Cardano development. Provide accurate code examples and explanations based on the context provided.
+
+When answering:
+- Give direct, helpful answers based on the context
+- Include relevant code examples when available
+- Explain concepts clearly for developers
+- Include any documentation or resource links found in the context. Handle them as follows:
+  - When you find "location: ...", include the link in your answer as a reference.
+  - If multiple links are present, include all relevant ones.
+- If the context doesn't cover the question, say so clearly.
+- Do not invent or assume APIs, methods, or functionality not in the documentation.
+
+Be concise but thorough. Focus on practical, actionable guidance for MeshJS development.
+"""
+
 class OpenAIService:
   def __init__(self, openai_api_key):
     self.client = AsyncOpenAI(api_key=openai_api_key)
@@ -79,7 +95,7 @@ class OpenAIService:
     messages = [
       {
         "role": "system",
-        "content": "You are a MeshJS expert assistant. Help developers with MeshJS questions using the provided context.\n\nUse the documentation context to answer questions about MeshJS and Cardano development. Provide accurate code examples and explanations based on the context provided.\n\nWhen answering:\n- Give direct, helpful answers based on the context\n- Include relevant code examples when available\n- Explain concepts clearly for developers\n- Include any links present in the context for additional resources\n- If the context doesn't cover something, say so\n- Don't make up APIs or methods not in the documentation\n\nBe concise but thorough. Focus on practical, actionable guidance for MeshJS development."
+        "content": AI_PROMPT
       },
       {
         "role": "user",
@@ -99,7 +115,7 @@ class OpenAIService:
     messages = [
       {
         "role": "system",
-        "content": "You are a MeshJS expert assistant. Help developers with MeshJS questions using the provided context.\n\nUse the documentation context to answer questions about MeshJS and Cardano development. Provide accurate code examples and explanations based on the context provided.\n\nWhen answering:\n- Give direct, helpful answers based on the context\n- Include relevant code examples when available\n- Explain concepts clearly for developers\n- Include any links present in the context for additional resources\n- If the context doesn't cover something, say so\n- Don't make up APIs or methods not in the documentation\n\nBe concise but thorough. Focus on practical, actionable guidance for MeshJS development."
+        "content": AI_PROMPT
       },
       {
         "role": "user",

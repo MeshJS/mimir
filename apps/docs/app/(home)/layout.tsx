@@ -21,6 +21,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="flex flex-col">
       <HomeLayout
         {...baseOptions}
+        nav={{ transparentMode: "always", ...baseOptions.nav }}
         searchToggle={{
           components: {
             lg: (
@@ -72,7 +73,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             text: "Discord",
             type: "icon",
             icon: <SiDiscord className="w-4 h-4 text-foreground" />,
-            url: "https://discord.gg/WvnCNqmAxy"
+            url: "https://discord.gg/dH48jH3BKa"
           }
         ]}
       >
