@@ -52,7 +52,6 @@ async def ask_mesh_ai(body: ChatCompletionRequest, credentials: HTTPAuthorizatio
 
   try:
     question = body.messages[-1].content
-
     embedded_query = await openai_service.embed_query(question)
     context = await get_context(embedded_query, supabase)
     generator = openai_service.get_answer(question=question, context=context)
