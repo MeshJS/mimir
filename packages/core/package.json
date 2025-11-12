@@ -11,6 +11,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "gray-matter": "^4.0.3",
     "@supabase/supabase-js": "^2.81.0",
     "pino": "^10.1.0"
   }
