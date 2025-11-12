@@ -16,3 +16,11 @@ export interface AppConfig {
     supabase: SupabaseConfig;
     logging: LoggingConfig;
 }
+
+export interface GithubConfig {
+    githubUrl: string;
+    directory?: string;
+    branch?: string;
+    token?: string;
+    outputDir?: string;
+}

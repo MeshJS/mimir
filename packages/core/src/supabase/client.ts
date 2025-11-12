@@ -2,6 +2,7 @@ import { AppConfig, SupabaseConfig } from "../config/types";
 import { Logger } from "pino";
 import { createClient } from "@supabase/supabase-js";
 import type { DocumentChunk, RetrievedChunk } from "./types";
+import { getLogger } from "../utils/logger";
 
 interface SupabaseDocRow {
     id: number;
@@ -21,7 +22,11 @@ interface ExistingChunkInfo {
 }
 
 export class SupabaseVectorStore {
-    constructor (private readonly config: SupabaseConfig, private readonly logger: Logger) {}
+    private readonly logger: Logger;
+
+    constructor(private readonly config: SupabaseConfig) {
+        this.logger = getLogger();
+    }
 
     private readonly client = createClient(this.config.url, this.config.serviceRoleKey, {
         auth: {
@@ -148,6 +153,6 @@ export class SupabaseVectorStore {
 
 }
 
-export function createSupabaseStore(config: AppConfig, logger: Logger) {
-    return new SupabaseVectorStore(config.supabase, logger);
+export function createSupabaseStore(config: AppConfig): SupabaseVectorStore {
+    return new SupabaseVectorStore(config.supabase);
 }
