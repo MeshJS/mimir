@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Logger } from "pino";
-import type { GithubConfig } from "../config/types";
+import { AppConfig } from "../config/types";
 import { getLogger } from "../utils/logger";
 
 const GITHUB_API_BASE = "https://api.github.com";
@@ -40,9 +40,9 @@ export interface GithubMdxDocument {
     sourceUrl: string;
 }
 
-export async function downloadGithubMdxFiles(config: GithubConfig): Promise<GithubMdxDocument[]> {
+export async function downloadGithubMdxFiles(appConfig: AppConfig): Promise<GithubMdxDocument[]> {
     const logger = getLogger();
-
+    const config = appConfig.github;
     const token = config?.token ?? process.env.GITHUB_TOKEN;
     const parsed = parseGithubUrl(config.githubUrl);
     const branch = config?.branch ?? parsed.branch ?? DEFAULT_BRANCH;

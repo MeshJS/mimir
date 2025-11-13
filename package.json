@@ -17,5 +17,11 @@
     "@types/node": "^24.10.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "bottleneck": "^2.19.5",
+    "p-limit": "^7.2.0",
+    "p-retry": "^7.1.0",
+    "tiktoken": "^1.0.22"
   }
 }
