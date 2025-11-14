@@ -6,9 +6,14 @@ export interface EmbedOptions {
     signal?: AbortSignal;
 }
 
+export type contextualChunkInput = {
+    chunkContent: string;
+    fileContent: string;
+}
+
 export interface GenerateAnswerOptions {
     prompt: string;
-    context: DocumentChunk[];
+    context: DocumentChunk[] | contextualChunkInput;
     temperature?: number;
     maxTokens?: number;
     signal?: AbortSignal;
@@ -24,7 +29,7 @@ export interface EmbeddingProvider {
 export interface ChatProvider {
     readonly config: ChatModelConfig;
     generateAnswer(options: GenerateAnswerOptions): Promise<string>;
-    generateFileChunkContexts(chunks: DocumentChunk[], fileContent: string): Promise<string[]>;
+    generateFileChunkContexts(chunks: string[], fileContent: string): Promise<string[]>;
 }
 
 export interface LLMClientBundle {
