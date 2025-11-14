@@ -16,7 +16,7 @@ interface SupabaseDocRow {
     similarity: number;
 }
 
-interface ExistingChunkInfo {
+export interface ExistingChunkInfo {
     id: number;
     checksum: string;
 }
@@ -100,11 +100,13 @@ export class SupabaseVectorStore {
                 .from(this.config.table)
                 .delete()
                 .eq("filepath", filepath);
-            
+
             if(error) {
                 this.logger.error(`Failed to delete chunks for ${filepath}: ${error.message}`);
                 throw new Error(`Failed to delete chunks for ${filepath}: ${error.message}`);
             }
+
+            return;
         }
 
         const { error } = await this.client
@@ -119,6 +121,53 @@ export class SupabaseVectorStore {
         }
 
         this.logger.info(`Successfully deleted missing chunks from ${filepath}`);
+    }
+
+    async deleteChunksByIds(ids: number[]): Promise<void> {
+        if(ids.length === 0) {
+            return;
+        }
+
+        const { error } = await this.client
+            .from(this.config.table)
+            .delete()
+            .in("id", ids);
+
+        if(error) {
+            this.logger.error(`Failed to delete chunks by id: ${error.message}`);
+            throw new Error(`Failed to delete chunks by id: ${error.message}`);
+        }
+
+        this.logger.info(`Deleted ${ids.length} chunk${ids.length === 1 ? "" : "s"} by id.`);
+    }
+
+    async updateChunkOrders(updates: Array<{ id: number; chunkId: number }>): Promise<void> {
+        if(updates.length === 0) {
+            return;
+        }
+
+        const TEMP_OFFSET = 1_000_000;
+
+        const phaseUpdate = async (applyOffset: boolean) => {
+            for(const update of updates) {
+                const nextValue = applyOffset ? TEMP_OFFSET + update.id : update.chunkId;
+                const { error } = await this.client
+                    .from(this.config.table)
+                    .update({ chunk_id: nextValue })
+                    .eq("id", update.id);
+
+                if(error) {
+                    const phase = applyOffset ? "temporary" : "final";
+                    this.logger.error(`Failed to apply ${phase} chunk order update: ${error.message}`);
+                    throw new Error(`Failed to apply chunk order update: ${error.message}`);
+                }
+            }
+        };
+
+        await phaseUpdate(true);
+        await phaseUpdate(false);
+
+        this.logger.info(`Reordered ${updates.length} chunk${updates.length === 1 ? "" : "s"}.`);
     }
 
     async matchDocuments(
