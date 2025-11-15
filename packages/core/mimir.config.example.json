@@ -1,0 +1,50 @@
+{
+  "logging": {
+    "level": "info",
+    "pretty": true
+  },
+  "github": {
+    "githubUrl": "https://github.com/your-org/your-repo",
+    "directory": "",
+    "branch": "main",
+    "token": "ghp_your_pat_here",
+    "outputDir": "./tmp/github-cache"
+  },
+  "supabase": {
+    "url": "https://your-project.supabase.co",
+    "anonKey": "",
+    "serviceRoleKey": "your_service_role_key",
+    "table": "documents",
+    "similarityThreshold": 0.5,
+    "matchCount": 8
+  },
+  "llm": {
+    "embedding": {
+      "provider": "openai",
+      "model": "text-embedding-3-large",
+      "apiKey": "openai_api_key",
+      "baseUrl": "",
+      "limits": {
+        "batchSize": 100,
+        "concurrency": 4,
+        "maxRequestsPerMinute": 1500,
+        "maxTokensPerMinute": 6250000,
+        "retries": 6
+      }
+    },
+    "chat": {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "apiKey": "openai_api_key",
+      "baseUrl": "",
+      "temperature": 0,
+      "maxOutputTokens": 1500,
+      "limits": {
+        "concurrency": 3,
+        "maxRequestsPerMinute": 500,
+        "maxTokensPerMinute": 90000,
+        "retries": 5
+      }
+    }
+  }
+}
