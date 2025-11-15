@@ -147,7 +147,7 @@ export abstract class BaseChatProvider implements ChatProvider {
             return [];
         }
 
-        const systemPrompt = "Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else."
+        const systemPrompt = "Please give a short succinct context (150-250 tokens) to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else.";
 
         const userPrompt = "Summarize how this chunk fits into the broader file. Highlight the chunk’s role, upstream dependencies, and any follow-on sections a reader should review."
 
@@ -160,7 +160,7 @@ export abstract class BaseChatProvider implements ChatProvider {
                     fileContent: fileContent,
                 },
                 systemPrompt,
-                maxTokens: this.config.maxOutputTokens ?? 2000,
+                maxTokens: Math.min(250, this.config.maxOutputTokens ?? 250),
                 temperature: this.config.temperature
             })))
         );
