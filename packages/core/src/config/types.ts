@@ -25,21 +25,33 @@ export type LLMProviderName =
     | "google"
     | "anthropic"
 
-export interface LLMModelConfig {
-    provider: LLMProviderName;
-    embeddingModel: string;
-    chatModel: string;
-    apiKey?: string;
-    baseUrl?: string;
+export interface ProviderLimitsConfig {
+    batchSize?: number;
+    concurrency?: number;
+    maxRequestsPerMinute?: number;
+    maxTokensPerMinute?: number;
+    retries?: number;
 }
 
-export interface ChatModelConfig extends LLMModelConfig {
+interface BaseModelConfig {
+    provider: LLMProviderName;
+    apiKey?: string;
+    baseUrl?: string;
+    limits?: ProviderLimitsConfig;
+}
+
+export interface EmbeddingModelConfig extends BaseModelConfig {
+    model: string;
+}
+
+export interface ChatModelConfig extends BaseModelConfig {
+    model: string;
     maxOutputTokens?: number;
     temperature: number;
 }
 
 export interface LLMConfig {
-    embedding: LLMModelConfig;
+    embedding: EmbeddingModelConfig;
     chat: ChatModelConfig;
 }
 
