@@ -1,8 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AppConfig } from "./types";
 
-const DEFAULT_CONFIG_FILENAME = "packages/core/mimir.config.json";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PACKAGE_ROOT = path.resolve(__dirname, "..", "..");
+
+const DEFAULT_CONFIG_RELATIVE = "packages/core/mimir.config.json";
+const DEFAULT_CONFIG_PATH = path.join(PACKAGE_ROOT, "mimir.config.json");
 const CONFIG_EXAMPLE_RELATIVE = "apps/mimir-rag/packages/core/mimir.config.example.json";
 
 function assertConfigShape(value: Partial<AppConfig>): asserts value is AppConfig {
@@ -62,7 +67,7 @@ export function resolveConfigPath(providedPath?: string): string {
         return path.resolve(process.cwd(), process.env.MIMIR_CONFIG_PATH);
     }
 
-    return path.resolve(process.cwd(), DEFAULT_CONFIG_FILENAME);
+    return DEFAULT_CONFIG_PATH;
 }
 
 export async function loadAppConfig(configPath: string): Promise<AppConfig> {
@@ -70,6 +75,12 @@ export async function loadAppConfig(configPath: string): Promise<AppConfig> {
         const raw = await fs.readFile(configPath, "utf8");
         const parsed = JSON.parse(raw) as Partial<AppConfig>;
         assertConfigShape(parsed);
+
+        const configDir = path.dirname(configPath);
+        if (parsed.github?.outputDir) {
+            parsed.github.outputDir = path.resolve(configDir, parsed.github.outputDir);
+        }
+
         return parsed;
     } catch (error) {
         const err = error as NodeJS.ErrnoException;
@@ -78,7 +89,7 @@ export async function loadAppConfig(configPath: string): Promise<AppConfig> {
             throw new Error(
                 [
                     `Configuration file not found at "${configPath}".`,
-                    `Copy ${CONFIG_EXAMPLE_RELATIVE} to ${DEFAULT_CONFIG_FILENAME} and fill in your project values,`,
+                    `Copy ${CONFIG_EXAMPLE_RELATIVE} to ${DEFAULT_CONFIG_RELATIVE} and fill in your project values,`,
                     "or pass a custom path via --config / MIMIR_CONFIG_PATH.",
                 ].join(" ")
             );

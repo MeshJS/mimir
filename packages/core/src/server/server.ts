@@ -105,17 +105,15 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
         }
 
         try {
-            const response = await askAi(
-                context.llm,
-                context.store,
-                {
-                    question,
-                    matchCount,
-                    similarityThreshold,
-                    systemPrompt,
-                },
-                logger
-            );
+            const response = await askAi(context.llm, context.store, {
+                question,
+                matchCount,
+                similarityThreshold,
+                systemPrompt,
+            }, {
+                logger,
+                config: context.config,
+            });
 
             res.json({
                 status: "ok",

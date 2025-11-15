@@ -20,6 +20,11 @@ export interface GithubConfig {
     outputDir?: string;
 }
 
+export interface DocumentationConfig {
+    baseUrl?: string;
+    contentPath?: string;
+}
+
 export type LLMProviderName = 
     | "openai"
     | "google"
@@ -59,5 +64,6 @@ export interface AppConfig {
     supabase: SupabaseConfig;
     logging: LoggingConfig;
     github: GithubConfig;
+    docs?: DocumentationConfig;
     llm: LLMConfig;
 }

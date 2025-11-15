@@ -2,18 +2,19 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Logger } from "pino";
 import { AppConfig } from "../config/types";
+import {
+    DEFAULT_BRANCH,
+    buildSourceUrl,
+    computeRelativePath,
+    encodeRepoPath,
+    joinRepoPaths,
+    normalizeRepoPath,
+    parseGithubUrl,
+} from "../github/utils";
 import { getLogger } from "../utils/logger";
 
 const GITHUB_API_BASE = "https://api.github.com";
-const DEFAULT_BRANCH = "main";
 const USER_AGENT = "mimir-rag-core";
-
-interface ParsedGithubUrl {
-    owner: string;
-    repo: string;
-    branch: string;
-    path: string;
-}
 
 interface GithubDirectoryEntry {
     type: string;
@@ -75,48 +76,6 @@ export async function downloadGithubMdxFiles(appConfig: AppConfig): Promise<Gith
         relativePath: computeRelativePath(scopedPath, doc.path),
         sourceUrl: buildSourceUrl(parsed.owner, parsed.repo, branch, doc.path),
     }));
-}
-
-function parseGithubUrl(input: string): ParsedGithubUrl {
-    let parsedUrl: URL;
-    try {
-        parsedUrl = new URL(input);
-    } catch {
-        throw new Error(`Invalid GitHub URL: ${input}`);
-    }
-
-    if(!parsedUrl.hostname.endsWith("github.com")) {
-        throw new Error(`Unsupported GitHub host in URL: ${input}`);
-    }
-
-    const segments = parsedUrl.pathname.split("/").filter(Boolean);
-
-    if(segments.length < 2) {
-        throw new Error(`GitHub URL must include an owner and repository: ${input}`);
-    }
-
-    const [owner, repoSegment, ...rest] = segments;
-    const repo = repoSegment.endsWith(".git") ? repoSegment.slice(0, -4) : repoSegment;
-
-    let branch = DEFAULT_BRANCH;
-    let repoPath = "";
-
-    if(rest.length > 0) {
-        const qualifier = rest[0];
-        if(qualifier === "tree" || qualifier === "blob") {
-            branch = rest[1] ?? DEFAULT_BRANCH;
-            repoPath = rest.slice(2).join("/");
-        } else {
-            repoPath = rest.join("/");
-        }
-    }
-
-    return {
-        owner,
-        repo,
-        branch,
-        path: normalizeRepoPath(repoPath),
-    };
 }
 
 async function collectMdxFiles(
@@ -255,68 +214,6 @@ async function resolveFileContent(file: GithubFileResponse, headers: Record<stri
 
 function isMdxFile(filename: string): boolean {
     return filename.toLowerCase().endsWith(".mdx");
-}
-
-function encodeRepoPath(repoPath: string): string {
-    if(repoPath === "") {
-        return "";
-    }
-
-    return repoPath.split("/").map((segment) => encodeURIComponent(segment)).join("/");
-}
-
-function normalizeRepoPath(repoPath: string): string {
-    if(!repoPath) {
-        return "";
-    }
-
-    const segments = repoPath.split("/").map((segment) => segment.trim()).filter((segment) => segment.length > 0);
-
-    for(const segment of segments) {
-        if(segment === "." || segment === "..") {
-            throw new Error(`Relative path segments ("." or "..") are not supported in repository paths.`);
-        }
-    }
-
-    return segments.join("/");
-}
-
-function joinRepoPaths(...parts: Array<string | undefined>): string {
-    const segments: string[] = [];
-
-    for(const part of parts) {
-        if(!part) {
-            continue;
-        }
-
-        const normalizedPart = normalizeRepoPath(part);
-        if(normalizedPart.length === 0) {
-            continue;
-        }
-
-        normalizedPart.split("/").forEach((segment) => segments.push(segment));
-    }
-
-    return segments.join("/");
-}
-
-function computeRelativePath(basePath: string, fullPath: string): string {
-    if(!basePath) {
-        return fullPath;
-    }
-
-    const prefix = basePath.endsWith("/") ? basePath : `${basePath}/`;
-
-    if(fullPath.startsWith(prefix)) {
-        return fullPath.slice(prefix.length);
-    }
-
-    return fullPath;
-}
-
-function buildSourceUrl(owner: string, repo: string, branch: string, filePath: string): string {
-    const encodedPath = encodeRepoPath(filePath);
-    return `https://github.com/${owner}/${repo}/blob/${encodeURIComponent(branch)}/${encodedPath}`;
 }
 
 async function persistDocuments(directory: string, documents: GithubMdxDocument[], logger: Logger): Promise<void> {

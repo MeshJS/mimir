@@ -3,6 +3,10 @@
     "level": "info",
     "pretty": true
   },
+  "docs": {
+    "baseUrl": "https://meshjs.dev/docs",
+    "contentPath": "content/docs"
+  },
   "github": {
     "githubUrl": "https://github.com/your-org/your-repo",
     "directory": "",
