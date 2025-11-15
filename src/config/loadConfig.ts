@@ -6,9 +6,9 @@ import type { AppConfig } from "./types";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "..", "..");
 
-const DEFAULT_CONFIG_RELATIVE = "packages/core/mimir.config.json";
+const DEFAULT_CONFIG_RELATIVE = "apps/mimir-rag/mimir.config.json";
 const DEFAULT_CONFIG_PATH = path.join(PACKAGE_ROOT, "mimir.config.json");
-const CONFIG_EXAMPLE_RELATIVE = "apps/mimir-rag/packages/core/mimir.config.example.json";
+const CONFIG_EXAMPLE_RELATIVE = "apps/mimir-rag/mimir.config.example.json";
 
 function assertConfigShape(value: Partial<AppConfig>): asserts value is AppConfig {
     if (!value.supabase) {

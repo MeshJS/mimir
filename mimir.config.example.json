@@ -4,7 +4,7 @@
     "pretty": true
   },
   "docs": {
-    "baseUrl": "https://meshjs.dev/docs",
+    "baseUrl": "https://meshjs.dev/",
     "contentPath": "content/docs"
   },
   "github": {
@@ -19,8 +19,8 @@
     "anonKey": "",
     "serviceRoleKey": "your_service_role_key",
     "table": "documents",
-    "similarityThreshold": 0.5,
-    "matchCount": 8
+    "similarityThreshold": 0.2,
+    "matchCount": 10
   },
   "llm": {
     "embedding": {
