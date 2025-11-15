@@ -1,5 +1,5 @@
 import type { DocumentChunk } from "../supabase/types";
-import type { ChatModelConfig, LLMModelConfig } from "../config/types";
+import type { ChatModelConfig, EmbeddingModelConfig } from "../config/types";
 
 export interface EmbedOptions {
     batchSize?: number;
@@ -21,7 +21,7 @@ export interface GenerateAnswerOptions {
 }
 
 export interface EmbeddingProvider {
-    readonly config: LLMModelConfig;
+    readonly config: EmbeddingModelConfig;
     embedDocuments(chunks: string[], options?: EmbedOptions): Promise<number[][]>;
     embedQuery(query: string, options?: EmbedOptions): Promise<number[]>;
 }
