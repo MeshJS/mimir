@@ -59,6 +59,7 @@ export async function runIngestionPipeline(
     const pendingEmbeddings: PendingEmbeddingChunk[] = [];
     const pendingReorders: Array<{ id: number; chunkId: number }> = [];
     const pendingDeletes: number[] = [];
+    const contextTasks: Promise<void>[] = [];
 
     ingestionLogger.info(`Processing ${documents.length} MDX document${documents.length === 1 ? "" : "s"}.`);
 
@@ -101,28 +102,41 @@ export async function runIngestionPipeline(
         );
 
         const chunkContents = diff.newOrUpdated.map((entry) => entry.chunk.chunkContent);
-        const contexts = await llm.chat.generateFileChunkContexts(chunkContents, document.content);
+        const contextTask = llm.chat
+            .generateFileChunkContexts(chunkContents, document.content)
+            .then((contexts) => {
+                if (contexts.length !== diff.newOrUpdated.length) {
+                    throw new Error(
+                        `Context generation returned ${contexts.length} entries for ${diff.newOrUpdated.length} chunks in ${filepath}.`
+                    );
+                }
 
-        if (contexts.length !== diff.newOrUpdated.length) {
-            throw new Error(
-                `Context generation returned ${contexts.length} entries for ${diff.newOrUpdated.length} chunks in ${filepath}.`
-            );
-        }
-
-        diff.newOrUpdated.forEach((entry, index) => {
-            const contextualText = contexts[index]?.trim() ?? "";
-            pendingEmbeddings.push({
-                filepath,
-                chunkId: entry.index,
-                chunkTitle: entry.chunk.chunkTitle,
-                checksum: entry.chunk.checksum,
-                content: entry.chunk.chunkContent,
-                contextualText,
+                diff.newOrUpdated.forEach((entry, index) => {
+                    const contextualText = contexts[index]?.trim() ?? "";
+                    pendingEmbeddings.push({
+                        filepath,
+                        chunkId: entry.index,
+                        chunkTitle: entry.chunk.chunkTitle,
+                        checksum: entry.chunk.checksum,
+                        content: entry.chunk.chunkContent,
+                        contextualText,
+                    });
+                });
+            })
+            .catch((error) => {
+                fileLogger.error(
+                    { err: error },
+                    `Failed to generate contextual summaries for ${filepath}.`
+                );
+                throw error;
             });
-        });
+
+        contextTasks.push(contextTask);
 
         stats.upsertedChunks += diff.newOrUpdated.length;
     }
+
+    await Promise.all(contextTasks);
 
     if (pendingReorders.length > 0) {
         ingestionLogger.info(`Reordering ${pendingReorders.length} chunk${pendingReorders.length === 1 ? "" : "s"}.`);

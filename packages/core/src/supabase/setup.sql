@@ -4,7 +4,7 @@ create table if not exists docs (
     id bigserial primary key,
     content text not null,
     contextual_text text not null,
-    embedding vector(1536) not null,
+    embedding vector(3072) not null,
     filepath text not null,
     chunk_id integer not null,
     chunk_title text not null,
@@ -32,7 +32,7 @@ for each row
 execute procedure set_updated_at();
 
 create or replace function match_docs (
-    query_embedding vector(1536),
+    query_embedding vector(3072),
     match_count integer default 10,
     similarity_threshold float default 0.75
 )
@@ -40,13 +40,13 @@ returns table (
     id bigint,
     context text,
     contextual_text text,
-    embedding vector(1536),
+    embedding vector(3072),
     filepath text,
     chunk_id integer,
     chunk_title text,
     checksum text,
     similarity float
-) language sql table as $$
+) language sql as $$
   select
     id,
     content,
@@ -62,4 +62,3 @@ returns table (
   order by embedding <=> query_embedding
   limit match_count;
 $$;
-

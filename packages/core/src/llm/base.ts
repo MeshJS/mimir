@@ -1,7 +1,7 @@
 import { createRateLimiter } from "../utils/rateLimiter";
 import pLimit from "p-limit";
 import pRetry from "p-retry";
-import { ChatModelConfig, LLMModelConfig } from "../config/types";
+import { ChatModelConfig, EmbeddingModelConfig } from "../config/types";
 import { batchChunks } from "../utils/batchChunks";
 import type { ChatProvider, EmbedOptions, EmbeddingProvider, GenerateAnswerOptions } from "./types";
 import Bottleneck from "bottleneck";
@@ -30,7 +30,7 @@ export abstract class BaseEmbeddingProvider implements EmbeddingProvider {
     private readonly tokenLimiter?: Bottleneck;
 
     constructor(
-        public readonly config: LLMModelConfig,
+        public readonly config: EmbeddingModelConfig,
         limits: ProviderRateLimits,
         protected readonly logger?: Logger
     ) {
@@ -41,7 +41,11 @@ export abstract class BaseEmbeddingProvider implements EmbeddingProvider {
         this.requestLimiter = createRateLimiter(this.concurrencyLimit, limits.maxRequestsPerMinute);
 
         if(limits.maxTokensPerMinute && Number.isFinite(limits.maxTokensPerMinute)) {
-            this.tokenLimiter = createRateLimiter(this.concurrencyLimit, limits.maxTokensPerMinute);
+            const tokenConcurrency = Math.max(
+                this.concurrencyLimit,
+                Math.ceil(limits.maxTokensPerMinute)
+            );
+            this.tokenLimiter = createRateLimiter(tokenConcurrency, limits.maxTokensPerMinute);
         }
     }
 
@@ -53,7 +57,7 @@ export abstract class BaseEmbeddingProvider implements EmbeddingProvider {
         const effectiveBatchSize = this.batchSize * 2;
         const batches = batchChunks(chunks, effectiveBatchSize)
             .map((batch, idx) => ({
-                idx, batch, tokens: countTokensInBatch(batch, this.config.embeddingModel)
+                idx, batch, tokens: countTokensInBatch(batch, this.config.model)
             }));
         
         const limit = pLimit(this.concurrencyLimit);
@@ -122,7 +126,11 @@ export abstract class BaseChatProvider implements ChatProvider {
         this.requestLimiter = createRateLimiter(this.concurrencyLimit, limits.maxRequestsPerMinute);
 
         if(limits.maxTokensPerMinute && Number.isFinite(limits.maxTokensPerMinute)) {
-            this.tokenLimiter = createRateLimiter(this.concurrencyLimit, limits.maxTokensPerMinute);
+            const tokenConcurrency = Math.max(
+                this.concurrencyLimit,
+                Math.ceil(limits.maxTokensPerMinute)
+            );
+            this.tokenLimiter = createRateLimiter(tokenConcurrency, limits.maxTokensPerMinute);
         }
     }
 
@@ -161,7 +169,7 @@ export abstract class BaseChatProvider implements ChatProvider {
     }
 
     protected estimateChatTokens(options: GenerateAnswerOptions): number {
-        const model = this.config.chatModel;
+        const model = this.config.model;
         let tokens = countTokens(options.prompt, model);
 
         if(options.systemPrompt) {

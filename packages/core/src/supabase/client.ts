@@ -23,21 +23,23 @@ export interface ExistingChunkInfo {
 
 export class SupabaseVectorStore {
     private readonly logger: Logger;
+    private readonly client;
+    private readonly config: SupabaseConfig;
 
-    constructor(private readonly config: SupabaseConfig) {
+    constructor(config: SupabaseConfig) {
+        this.config = config;
         this.logger = getLogger();
-    }
-
-    private readonly client = createClient(this.config.url, this.config.serviceRoleKey, {
-        auth: {
-            persistSession: false,
-        },
-        global: {
-            headers: {
-                "X-Client-Info": "rag-core/1.0.0"
+        this.client = createClient(this.config.url, this.config.serviceRoleKey, {
+            auth: {
+                persistSession: false,
             },
-        },
-    });
+            global: {
+                headers: {
+                    "X-Client-Info": "rag-core/1.0.0"
+                },
+            },
+        });
+    }
 
     async verifyConnection(): Promise<void> {
         const { error } = await this.client.from(this.config.table).select("id").limit(1);

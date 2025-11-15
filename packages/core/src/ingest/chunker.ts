@@ -28,9 +28,12 @@ export function chunkMdxFile(mdxFileContent: string): MdxChunk[] {
         const isHeading = trimmed.startsWith("#") && !trimmed.endsWith("[!toc]");
         const isFrontmatterTitle = trimmed.startsWith("title");
 
-        if(isHeading || isFrontmatterTitle) {
+        if(isHeading) {
             flushChunk();
-            currentChunk.heading = extractTitle(trimmed, isFrontmatterTitle ? { isFrontmatter: true }: undefined);
+            currentChunk.heading = extractTitle(trimmed);
+            currentChunk.lines.push(trimmed);
+        } else if(isFrontmatterTitle) {
+            currentChunk.heading = extractTitle(trimmed, { isFrontmatter: true })
             currentChunk.lines.push(trimmed);
         } else {
             currentChunk.lines.push(trimmed);
