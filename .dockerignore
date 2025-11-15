@@ -1,0 +1,10 @@
+node_modules
+dist
+tmp
+.git
+.gitignore
+Dockerfile
+npm-debug.log*
+*.log
+.DS_Store
+mimir.config.json
