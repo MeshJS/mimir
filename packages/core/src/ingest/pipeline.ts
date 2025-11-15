@@ -112,7 +112,8 @@ export async function runIngestionPipeline(
                 }
 
                 diff.newOrUpdated.forEach((entry, index) => {
-                    const contextualText = contexts[index]?.trim() ?? "";
+                    const contextHeader = contexts[index]?.trim() ?? "";
+                    const contextualText = `${contextHeader}---${entry.chunk.chunkContent}`;
                     pendingEmbeddings.push({
                         filepath,
                         chunkId: entry.index,
@@ -159,7 +160,7 @@ export async function runIngestionPipeline(
     ingestionLogger.info(`Embedding ${pendingEmbeddings.length} chunk${pendingEmbeddings.length === 1 ? "" : "s"} using ${llm.embedding.config.provider}.`);
 
     const embeddings = await llm.embedding.embedDocuments(
-        pendingEmbeddings.map((entry) => entry.content)
+        pendingEmbeddings.map((entry) => entry.contextualText)
     );
 
     if (embeddings.length !== pendingEmbeddings.length) {
