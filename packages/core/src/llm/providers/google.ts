@@ -1,6 +1,6 @@
 import { Logger } from "pino";
-import { BaseChatProvider, BaseEmbeddingProvider } from "../base";
-import type { ChatModelConfig, LLMModelConfig } from "../../config/types";
+import { BaseChatProvider, BaseEmbeddingProvider, type ProviderRateLimits } from "../base";
+import type { ChatModelConfig, EmbeddingModelConfig, ProviderLimitsConfig } from "../../config/types";
 import type { EmbedOptions, GenerateAnswerOptions } from "../types";
 import { buildPromptMessages } from "../prompt";
 
@@ -50,6 +50,17 @@ function toModelPath(model: string): string {
     }
 
     return `models/${model}`;
+}
+
+function mergeLimits(defaults: ProviderRateLimits, override?: ProviderLimitsConfig): ProviderRateLimits {
+    if (!override) {
+        return defaults;
+    }
+
+    return {
+        ...defaults,
+        ...override,
+    };
 }
 
 async function parseGeminiError(response: Response, fallback: string): Promise<never> {
@@ -112,22 +123,25 @@ export class GoogleEmbeddingProvider extends BaseEmbeddingProvider {
     private readonly baseUrl: string;
     private readonly modelPath: string;
 
-    constructor(config: LLMModelConfig, logger?: Logger) {
+    constructor(config: EmbeddingModelConfig, logger?: Logger) {
         if (!config.apiKey) {
             throw new Error("Google Generative AI API key is required for embeddings.");
         }
 
-        const modelPath = toModelPath(config.embeddingModel);
+        const modelPath = toModelPath(config.model);
 
         super(
             config,
-            {
-                batchSize: 16,
-                concurrency: 3,
-                maxRequestsPerMinute: 300,
-                maxTokensPerMinute: 1_000_000,
-                retries: 5,
-            },
+            mergeLimits(
+                {
+                    batchSize: 16,
+                    concurrency: 3,
+                    maxRequestsPerMinute: 300,
+                    maxTokensPerMinute: 1_000_000,
+                    retries: 5,
+                },
+                config.limits
+            ),
             logger
         );
 
@@ -177,16 +191,19 @@ export class GoogleChatProvider extends BaseChatProvider {
             throw new Error("Google Generative AI API key is required for chat completions.");
         }
 
-        const modelPath = toModelPath(config.chatModel);
+        const modelPath = toModelPath(config.model);
 
         super(
             config,
-            {
-                concurrency: 3,
-                maxRequestsPerMinute: 90,
-                maxTokensPerMinute: 300_000,
-                retries: 5,
-            },
+            mergeLimits(
+                {
+                    concurrency: 3,
+                    maxRequestsPerMinute: 90,
+                    maxTokensPerMinute: 300_000,
+                    retries: 5,
+                },
+                config.limits
+            ),
             logger
         );
 

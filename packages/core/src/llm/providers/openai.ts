@@ -1,6 +1,6 @@
 import { Logger } from "pino";
-import { BaseChatProvider, BaseEmbeddingProvider } from "../base";
-import type { ChatModelConfig, LLMModelConfig } from "../../config/types";
+import { BaseChatProvider, BaseEmbeddingProvider, type ProviderRateLimits } from "../base";
+import type { ChatModelConfig, EmbeddingModelConfig, ProviderLimitsConfig } from "../../config/types";
 import type { EmbedOptions, GenerateAnswerOptions } from "../types";
 import { buildPromptMessages } from "../prompt";
 
@@ -33,6 +33,17 @@ function resolveBaseUrl(url?: string): string {
     return url.endsWith("/") ? url : `${url}/`;
 }
 
+function mergeLimits(defaults: ProviderRateLimits, override?: ProviderLimitsConfig): ProviderRateLimits {
+    if (!override) {
+        return defaults;
+    }
+
+    return {
+        ...defaults,
+        ...override,
+    };
+}
+
 async function parseOpenAIError(response: Response, fallback: string): Promise<never> {
     let details = fallback;
 
@@ -55,20 +66,23 @@ export class OpenAIEmbeddingProvider extends BaseEmbeddingProvider {
     private readonly apiKey: string;
     private readonly baseUrl: string;
 
-    constructor(config: LLMModelConfig, logger?: Logger) {
+    constructor(config: EmbeddingModelConfig, logger?: Logger) {
         if (!config.apiKey) {
             throw new Error("OpenAI API key is required for embeddings.");
         }
 
         super(
             config,
-            {
-                batchSize: 100,
-                concurrency: 4,
-                maxRequestsPerMinute: 1_500,
-                maxTokensPerMinute: 6_250_000,
-                retries: 6,
-            },
+            mergeLimits(
+                {
+                    batchSize: 100,
+                    concurrency: 4,
+                    maxRequestsPerMinute: 1_500,
+                    maxTokensPerMinute: 6_250_000,
+                    retries: 6,
+                },
+                config.limits
+            ),
             logger
         );
 
@@ -85,7 +99,7 @@ export class OpenAIEmbeddingProvider extends BaseEmbeddingProvider {
                 Authorization: `Bearer ${this.apiKey}`,
             },
             body: JSON.stringify({
-                model: this.config.embeddingModel,
+                model: this.config.model,
                 input: chunks,
             }),
             signal: options?.signal,
@@ -121,12 +135,15 @@ export class OpenAIChatProvider extends BaseChatProvider {
 
         super(
             config,
-            {
-                concurrency: 3,
-                maxRequestsPerMinute: 500,
-                maxTokensPerMinute: 90_000,
-                retries: 5,
-            },
+            mergeLimits(
+                {
+                    concurrency: 3,
+                    maxRequestsPerMinute: 500,
+                    maxTokensPerMinute: 90_000,
+                    retries: 5,
+                },
+                config.limits
+            ),
             logger
         );
 
@@ -144,7 +161,7 @@ export class OpenAIChatProvider extends BaseChatProvider {
                 Authorization: `Bearer ${this.apiKey}`,
             },
             body: JSON.stringify({
-                model: this.config.chatModel,
+                model: this.config.model,
                 temperature: options.temperature ?? this.config.temperature,
                 max_tokens: options.maxTokens ?? this.config.maxOutputTokens,
                 messages: [
