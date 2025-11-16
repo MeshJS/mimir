@@ -18,6 +18,7 @@ export interface GenerateAnswerOptions {
     maxTokens?: number;
     signal?: AbortSignal;
     systemPrompt?: string;
+    onToken?: (chunk: string) => void;
 }
 
 export interface EmbeddingProvider {

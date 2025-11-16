@@ -3,6 +3,7 @@ import { BaseChatProvider, type ProviderRateLimits } from "../base";
 import type { ChatModelConfig, ProviderLimitsConfig } from "../../config/types";
 import type { GenerateAnswerOptions } from "../types";
 import { buildPromptMessages } from "../prompt";
+import { readEventStream } from "../../utils/sse";
 
 interface AnthropicMessageContent {
     type?: string;
@@ -11,6 +12,19 @@ interface AnthropicMessageContent {
 
 interface AnthropicMessageResponse {
     content?: AnthropicMessageContent[];
+    error?: {
+        message?: string;
+    };
+}
+
+interface AnthropicStreamResponse {
+    type?: string;
+    delta?: {
+        text?: string;
+    };
+    message?: {
+        id?: string;
+    };
     error?: {
         message?: string;
     };
@@ -105,6 +119,7 @@ export class AnthropicChatProvider extends BaseChatProvider {
     protected async complete(options: GenerateAnswerOptions): Promise<string> {
         const { system, user } = buildPromptMessages(options);
         const url = new URL("v1/messages", this.baseUrl);
+        const shouldStream = typeof options.onToken === "function";
 
         const maxTokens = Math.max(1, Math.floor(options.maxTokens ?? this.config.maxOutputTokens ?? 1000));
         const temperature = options.temperature ?? this.config.temperature;
@@ -134,12 +149,17 @@ export class AnthropicChatProvider extends BaseChatProvider {
             payload.system = trimmedSystem;
         }
 
+        if (shouldStream) {
+            payload.stream = true;
+        }
+
         const response = await fetch(url, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 "x-api-key": this.apiKey,
                 "anthropic-version": this.apiVersion,
+                Accept: shouldStream ? "text/event-stream" : "application/json",
             },
             body: JSON.stringify(payload),
             signal: options.signal,
@@ -149,7 +169,38 @@ export class AnthropicChatProvider extends BaseChatProvider {
             await parseAnthropicError(response, `Anthropic chat completion failed with status ${response.status}.`);
         }
 
+        if (shouldStream) {
+            return this.streamCompletion(response, options.onToken!);
+        }
+
         const body = (await response.json()) as AnthropicMessageResponse;
         return extractContentText(body);
+    }
+
+    private async streamCompletion(response: Response, onToken: (chunk: string) => void): Promise<string> {
+        let fullText = "";
+
+        await readEventStream(response, (event) => {
+            try {
+                const payload = JSON.parse(event.data) as AnthropicStreamResponse;
+                if (payload.type === "content_block_delta") {
+                    const text = payload.delta?.text;
+                    if (text) {
+                        fullText += text;
+                        onToken(text);
+                    }
+                }
+
+                if (payload.type === "message_stop") {
+                    return false;
+                }
+            } catch (error) {
+                this.logger?.warn({ err: error, data: event.data }, "Failed to parse Anthropic stream chunk.");
+            }
+
+            return true;
+        });
+
+        return fullText.trim();
     }
 }

@@ -3,6 +3,7 @@ import { BaseChatProvider, BaseEmbeddingProvider, type ProviderRateLimits } from
 import type { ChatModelConfig, EmbeddingModelConfig, ProviderLimitsConfig } from "../../config/types";
 import type { EmbedOptions, GenerateAnswerOptions } from "../types";
 import { buildPromptMessages } from "../prompt";
+import { readEventStream } from "../../utils/sse";
 
 interface GeminiEmbeddingValues {
     values?: number[];
@@ -28,6 +29,13 @@ interface GeminiCandidate {
 }
 
 interface GeminiGenerateContentResponse {
+    candidates?: GeminiCandidate[];
+    error?: {
+        message?: string;
+    };
+}
+
+interface GeminiStreamChunk {
     candidates?: GeminiCandidate[];
     error?: {
         message?: string;
@@ -116,6 +124,17 @@ function extractCandidateText(payload: GeminiGenerateContentResponse): string {
     }
 
     return text;
+}
+
+function extractCandidateChunkText(payload: GeminiStreamChunk): string {
+    const candidate = payload.candidates?.[0];
+    if (!candidate?.content?.parts?.length) {
+        return "";
+    }
+
+    return candidate.content.parts
+        .map((part) => part?.text ?? "")
+        .join("");
 }
 
 export class GoogleEmbeddingProvider extends BaseEmbeddingProvider {
@@ -214,7 +233,9 @@ export class GoogleChatProvider extends BaseChatProvider {
 
     protected async complete(options: GenerateAnswerOptions): Promise<string> {
         const { system, user } = buildPromptMessages(options);
-        const url = new URL(`/v1beta/${this.modelPath}:generateContent`, this.baseUrl);
+        const shouldStream = typeof options.onToken === "function";
+        const endpoint = shouldStream ? "streamGenerateContent" : "generateContent";
+        const url = new URL(`/v1beta/${this.modelPath}:${endpoint}`, this.baseUrl);
         url.searchParams.set("key", this.apiKey);
 
         const generationConfig: Record<string, number> = {};
@@ -255,6 +276,7 @@ export class GoogleChatProvider extends BaseChatProvider {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                Accept: shouldStream ? "text/event-stream" : "application/json",
             },
             body: JSON.stringify(requestBody),
             signal: options.signal,
@@ -264,7 +286,32 @@ export class GoogleChatProvider extends BaseChatProvider {
             await parseGeminiError(response, `Gemini chat completion failed with status ${response.status}.`);
         }
 
+        if (shouldStream) {
+            return this.streamCompletion(response, options.onToken!);
+        }
+
         const payload = (await response.json()) as GeminiGenerateContentResponse;
         return extractCandidateText(payload);
+    }
+
+    private async streamCompletion(response: Response, onToken: (chunk: string) => void): Promise<string> {
+        let fullText = "";
+
+        await readEventStream(response, (event) => {
+            try {
+                const payload = JSON.parse(event.data) as GeminiStreamChunk;
+                const text = extractCandidateChunkText(payload);
+                if (text) {
+                    fullText += text;
+                    onToken(text);
+                }
+            } catch (error) {
+                this.logger?.warn({ err: error, data: event.data }, "Failed to parse Gemini stream chunk.");
+            }
+
+            return true;
+        });
+
+        return fullText.trim();
     }
 }

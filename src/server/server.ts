@@ -9,6 +9,7 @@ import { createSupabaseStore, type SupabaseVectorStore } from "../supabase/clien
 import { runIngestionPipeline } from "../ingest/pipeline";
 import { askAi } from "../query/askAi";
 import { createApiKeyMiddleware } from "./middleware/apiKey";
+import { isStreamingRequest, streamAskResponse } from "./streamingAsk";
 
 export interface ServerOptions {
     configPath?: string;
@@ -106,16 +107,41 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
             return;
         }
 
-        try {
-            const response = await askAi(context.llm, context.store, {
-                question,
-                matchCount,
-                similarityThreshold,
-                systemPrompt,
-            }, {
+        if (isStreamingRequest(req)) {
+            await streamAskResponse(
+                req,
+                res,
+                {
+                    config: context.config,
+                    llm: context.llm,
+                    store: context.store,
+                },
                 logger,
-                config: context.config,
-            });
+                {
+                    question,
+                    matchCount,
+                    similarityThreshold,
+                    systemPrompt,
+                }
+            );
+            return;
+        }
+
+        try {
+            const response = await askAi(
+                context.llm,
+                context.store,
+                {
+                    question,
+                    matchCount,
+                    similarityThreshold,
+                    systemPrompt,
+                },
+                {
+                    logger,
+                    config: context.config,
+                }
+            );
 
             res.json({
                 status: "ok",

@@ -3,6 +3,7 @@ import { BaseChatProvider, BaseEmbeddingProvider, type ProviderRateLimits } from
 import type { ChatModelConfig, EmbeddingModelConfig, ProviderLimitsConfig } from "../../config/types";
 import type { EmbedOptions, GenerateAnswerOptions } from "../types";
 import { buildPromptMessages } from "../prompt";
+import { readEventStream } from "../../utils/sse";
 
 interface OpenAIEmbeddingResponse {
     data: Array<{
@@ -18,6 +19,18 @@ interface OpenAIChatCompletionResponse {
         message?: {
             content?: string;
         };
+    }>;
+    error?: {
+        message?: string;
+    };
+}
+
+interface OpenAIChatCompletionChunk {
+    choices?: Array<{
+        delta?: {
+            content?: string;
+        };
+        finish_reason?: string | null;
     }>;
     error?: {
         message?: string;
@@ -153,6 +166,7 @@ export class OpenAIChatProvider extends BaseChatProvider {
 
     protected async complete(options: GenerateAnswerOptions): Promise<string> {
         const { system, user } = buildPromptMessages(options);
+        const shouldStream = typeof options.onToken === "function";
         const url = new URL("chat/completions", this.baseUrl);
         const response = await fetch(url, {
             method: "POST",
@@ -168,12 +182,17 @@ export class OpenAIChatProvider extends BaseChatProvider {
                     { role: "system", content: system },
                     { role: "user", content: user },
                 ],
+                stream: shouldStream,
             }),
             signal: options.signal,
         });
 
         if (!response.ok) {
             await parseOpenAIError(response, `OpenAI chat completion failed with status ${response.status}.`);
+        }
+
+        if (shouldStream) {
+            return this.streamCompletion(response, options.onToken!);
         }
 
         const payload = (await response.json()) as OpenAIChatCompletionResponse;
@@ -183,5 +202,31 @@ export class OpenAIChatProvider extends BaseChatProvider {
         }
 
         return content;
+    }
+
+    private async streamCompletion(response: Response, onToken: (chunk: string) => void): Promise<string> {
+        let fullText = "";
+
+        await readEventStream(response, (event) => {
+            const trimmed = event.data.trim();
+            if (trimmed === "[DONE]") {
+                return false;
+            }
+
+            try {
+                const payload = JSON.parse(trimmed) as OpenAIChatCompletionChunk;
+                const delta = payload.choices?.[0]?.delta?.content;
+                if (delta) {
+                    fullText += delta;
+                    onToken(delta);
+                }
+            } catch (error) {
+                this.logger?.warn({ err: error, data: trimmed }, "Failed to parse OpenAI stream chunk.");
+            }
+
+            return true;
+        });
+
+        return fullText.trim();
     }
 }

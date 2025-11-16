@@ -3,6 +3,7 @@ import { BaseChatProvider, BaseEmbeddingProvider, type ProviderRateLimits } from
 import type { ChatModelConfig, EmbeddingModelConfig, ProviderLimitsConfig } from "../../config/types";
 import type { EmbedOptions, GenerateAnswerOptions } from "../types";
 import { buildPromptMessages } from "../prompt";
+import { readEventStream } from "../../utils/sse";
 
 interface MistralEmbeddingItem {
     embedding?: number[];
@@ -23,6 +24,20 @@ interface MistralChatChoice {
 
 interface MistralChatResponse {
     choices?: MistralChatChoice[];
+    error?: {
+        message?: string;
+    };
+}
+
+interface MistralChatStreamResponse {
+    choices?: Array<{
+        delta?: {
+            content?: string;
+        };
+        message?: {
+            content?: string;
+        };
+    }>;
     error?: {
         message?: string;
     };
@@ -170,6 +185,7 @@ export class MistralChatProvider extends BaseChatProvider {
     protected async complete(options: GenerateAnswerOptions): Promise<string> {
         const { system, user } = buildPromptMessages(options);
         const url = new URL("v1/chat/completions", this.baseUrl);
+        const shouldStream = typeof options.onToken === "function";
 
         const temperature = options.temperature ?? this.config.temperature;
         const maxTokens = options.maxTokens ?? this.config.maxOutputTokens;
@@ -193,11 +209,16 @@ export class MistralChatProvider extends BaseChatProvider {
             body.max_tokens = maxTokens;
         }
 
+        if (shouldStream) {
+            body.stream = true;
+        }
+
         const response = await fetch(url, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${this.apiKey}`,
+                Accept: shouldStream ? "text/event-stream" : "application/json",
             },
             body: JSON.stringify(body),
             signal: options.signal,
@@ -207,7 +228,37 @@ export class MistralChatProvider extends BaseChatProvider {
             await parseMistralError(response, `Mistral chat completion failed with status ${response.status}.`);
         }
 
+        if (shouldStream) {
+            return this.streamCompletion(response, options.onToken!);
+        }
+
         const payload = (await response.json()) as MistralChatResponse;
         return extractChatText(payload);
+    }
+
+    private async streamCompletion(response: Response, onToken: (chunk: string) => void): Promise<string> {
+        let fullText = "";
+
+        await readEventStream(response, (event) => {
+            const trimmed = event.data.trim();
+            if (trimmed === "[DONE]") {
+                return false;
+            }
+
+            try {
+                const payload = JSON.parse(trimmed) as MistralChatStreamResponse;
+                const delta = payload.choices?.[0]?.delta?.content;
+                if (delta) {
+                    fullText += delta;
+                    onToken(delta);
+                }
+            } catch (error) {
+                this.logger?.warn({ err: error, data: trimmed }, "Failed to parse Mistral stream chunk.");
+            }
+
+            return true;
+        });
+
+        return fullText.trim();
     }
 }

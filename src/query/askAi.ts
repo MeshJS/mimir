@@ -16,6 +16,8 @@ export interface AskAiOptions {
     matchCount?: number;
     similarityThreshold?: number;
     systemPrompt?: string;
+    onToken?: (chunk: string) => void;
+    signal?: AbortSignal;
 }
 
 export interface AskAiSource {
@@ -50,7 +52,7 @@ export async function askAi(
     }
 
     activeLogger.info({ question: trimmedQuestion }, "Embedding query.");
-    const queryEmbedding = await llm.embedding.embedQuery(trimmedQuestion);
+    const queryEmbedding = await llm.embedding.embedQuery(trimmedQuestion, { signal: options.signal });
 
     activeLogger.info("Retrieving similar chunks from Supabase.");
     const matches = await store.matchDocuments(queryEmbedding, {
@@ -65,14 +67,6 @@ export async function askAi(
             sources: [],
         };
     }
-
-    activeLogger.info({ matchCount: matches.length }, "Generating answer with retrieved context.");
-
-    const answer = await llm.chat.generateAnswer({
-        prompt: trimmedQuestion,
-        context: matches,
-        systemPrompt: options.systemPrompt,
-    });
 
     const sources: AskAiSource[] = matches.map((match) => {
         const { githubUrl, docsUrl, baseUrl } = resolveSourceLinks(match.filepath, context?.config);
@@ -94,6 +88,16 @@ export async function askAi(
             docsUrl,
             finalUrl,
         };
+    });
+
+    activeLogger.info({ matchCount: matches.length }, "Generating answer with retrieved context.");
+
+    const answer = await llm.chat.generateAnswer({
+        prompt: trimmedQuestion,
+        context: matches,
+        systemPrompt: options.systemPrompt,
+        onToken: options.onToken,
+        signal: options.signal,
     });
 
     activeLogger.info({ answer }, "answer from the AI");
