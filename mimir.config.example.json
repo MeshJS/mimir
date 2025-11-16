@@ -3,8 +3,11 @@
     "level": "info",
     "pretty": true
   },
+  "server": {
+    "apiKey": "change-me"
+  },
   "docs": {
-    "baseUrl": "https://meshjs.dev/",
+    "baseUrl": "https://your-domain.com/",
     "contentPath": "content/docs"
   },
   "github": {

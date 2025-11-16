@@ -3,6 +3,10 @@ export interface LoggingConfig {
     pretty: boolean;
 }
 
+export interface ServerConfig {
+    apiKey: string;
+}
+
 export interface SupabaseConfig {
     url: string;
     anonKey?: string;
@@ -62,6 +66,7 @@ export interface LLMConfig {
 }
 
 export interface AppConfig {
+    server: ServerConfig;
     supabase: SupabaseConfig;
     logging: LoggingConfig;
     github: GithubConfig;

@@ -11,6 +11,10 @@ const DEFAULT_CONFIG_PATH = path.join(PACKAGE_ROOT, "mimir.config.json");
 const CONFIG_EXAMPLE_RELATIVE = "apps/mimir-rag/mimir.config.example.json";
 
 function assertConfigShape(value: Partial<AppConfig>): asserts value is AppConfig {
+    if (!value.server?.apiKey) {
+        throw new Error("Server configuration must include an 'apiKey'.");
+    }
+
     if (!value.supabase) {
         throw new Error("Supabase configuration is missing in the config file.");
     }

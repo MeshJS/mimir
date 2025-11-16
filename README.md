@@ -4,7 +4,7 @@ Utility CLI + API that ingests docs into Supabase and exposes `/ask` + `/ingest`
 
 ## Local workflow
 
-1. Copy `mimir.config.example.json` to `mimir.config.json` and fill in the Supabase + LLM details.
+1. Copy `mimir.config.example.json` to `mimir.config.json` and fill in the Supabase + LLM details plus a `server.apiKey`, which every HTTP call must send in the `x-api-key` header (or `Authorization: Bearer <key>`). Run `npm run generate-apikey -- --config mimir.config.json` any time you want the project to mint a new random key and write it into the config.
 2. Bootstrap the database schema (runs `psql src/supabase/setup.sql`):
 
    ```bash

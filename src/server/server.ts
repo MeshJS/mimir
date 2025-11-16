@@ -8,6 +8,7 @@ import type { LLMClientBundle } from "../llm/types";
 import { createSupabaseStore, type SupabaseVectorStore } from "../supabase/client";
 import { runIngestionPipeline } from "../ingest/pipeline";
 import { askAi } from "../query/askAi";
+import { createApiKeyMiddleware } from "./middleware/apiKey";
 
 export interface ServerOptions {
     configPath?: string;
@@ -67,6 +68,7 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
     const app = express();
     app.use(express.json());
     app.use(applyCors);
+    app.use(createApiKeyMiddleware(context.config.server.apiKey));
 
     app.get("/health", (_req: any, res: any) => {
         res.json({ status: "ok", ingestionBusy: context.ingestionBusy });
