@@ -4,6 +4,7 @@ import type { ChatProvider, EmbeddingProvider, LLMClientBundle } from "./types";
 import { OpenAIChatProvider, OpenAIEmbeddingProvider } from "./providers/openai";
 import { GoogleChatProvider, GoogleEmbeddingProvider } from "./providers/google";
 import { AnthropicChatProvider } from "./providers/anthropic";
+import { MistralChatProvider, MistralEmbeddingProvider } from "./providers/mistral";
 
 function providerLogger(logger: Logger | undefined, scope: "chat" | "embedding", provider: string): Logger | undefined {
     if (!logger) {
@@ -25,6 +26,8 @@ export function createEmbeddingProvider(config: EmbeddingModelConfig, logger?: L
             return new OpenAIEmbeddingProvider(config, scopedLogger);
         case "google":
             return new GoogleEmbeddingProvider(config, scopedLogger);
+        case "mistral":
+            return new MistralEmbeddingProvider(config, scopedLogger);
         default:
             throw new Error(`Embedding provider "${config.provider}" is not supported.`);
     }
@@ -40,6 +43,8 @@ export function createChatProvider(config: ChatModelConfig, logger?: Logger): Ch
             return new GoogleChatProvider(config, scopedLogger);
         case "anthropic":
             return new AnthropicChatProvider(config, scopedLogger);
+        case "mistral":
+            return new MistralChatProvider(config, scopedLogger);
         default:
             throw new Error(`Chat provider "${config.provider}" is not supported.`);
     }

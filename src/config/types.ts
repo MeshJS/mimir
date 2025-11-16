@@ -29,6 +29,7 @@ export type LLMProviderName =
     | "openai"
     | "google"
     | "anthropic"
+    | "mistral"
 
 export interface ProviderLimitsConfig {
     batchSize?: number;

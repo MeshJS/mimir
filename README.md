@@ -42,4 +42,4 @@ before starting the server, mirroring the local `make setup-db` behavior.
 
 ## LLM configuration
 
-`llm.embedding.provider` currently supports `openai` and `google`. The chat provider (`llm.chat.provider`) can additionally be set to `anthropic` to route `/ask` responses through Claude. Supply your Anthropic API key via `llm.chat.apiKey` (and optionally override the API base URL/version with `llm.chat.baseUrl` or the `ANTHROPIC_API_VERSION` env var). Embeddings must still come from OpenAI or Google because Anthropic does not yet expose an embeddings API.
+`llm.embedding.provider` supports `openai`, `google`, and `mistral`. The chat provider (`llm.chat.provider`) can be set independently to `openai`, `google`, `anthropic`, or `mistral`, letting you mix providers (e.g., OpenAI embeddings with Mistral chat completions). Provide the appropriate API key/endpoint per provider; Anthropic’s API version can be overridden via `ANTHROPIC_API_VERSION`. Anthropic currently lacks an embeddings API, so embeddings still need to come from OpenAI, Google, or Mistral.
