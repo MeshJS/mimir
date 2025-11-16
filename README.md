@@ -39,3 +39,7 @@ make docker-run IMAGE_NAME=mimir-rag:local \
 `docker-run` binds your local config file into `/app/mimir.config.json`, forwards the chosen port, and passes any database credentials so the container can reach Supabase.
 When `DATABASE_URL` (or `DB_URL`) is provided, the container’s entrypoint automatically runs `src/supabase/setup.sql`
 before starting the server, mirroring the local `make setup-db` behavior.
+
+## LLM configuration
+
+`llm.embedding.provider` currently supports `openai` and `google`. The chat provider (`llm.chat.provider`) can additionally be set to `anthropic` to route `/ask` responses through Claude. Supply your Anthropic API key via `llm.chat.apiKey` (and optionally override the API base URL/version with `llm.chat.baseUrl` or the `ANTHROPIC_API_VERSION` env var). Embeddings must still come from OpenAI or Google because Anthropic does not yet expose an embeddings API.

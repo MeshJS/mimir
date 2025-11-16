@@ -3,6 +3,7 @@ import type { LLMConfig, ChatModelConfig, EmbeddingModelConfig } from "../config
 import type { ChatProvider, EmbeddingProvider, LLMClientBundle } from "./types";
 import { OpenAIChatProvider, OpenAIEmbeddingProvider } from "./providers/openai";
 import { GoogleChatProvider, GoogleEmbeddingProvider } from "./providers/google";
+import { AnthropicChatProvider } from "./providers/anthropic";
 
 function providerLogger(logger: Logger | undefined, scope: "chat" | "embedding", provider: string): Logger | undefined {
     if (!logger) {
@@ -37,6 +38,8 @@ export function createChatProvider(config: ChatModelConfig, logger?: Logger): Ch
             return new OpenAIChatProvider(config, scopedLogger);
         case "google":
             return new GoogleChatProvider(config, scopedLogger);
+        case "anthropic":
+            return new AnthropicChatProvider(config, scopedLogger);
         default:
             throw new Error(`Chat provider "${config.provider}" is not supported.`);
     }
