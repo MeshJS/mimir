@@ -245,8 +245,6 @@ export class GoogleChatProvider extends BaseChatProvider {
             };
 
             requestBody.systemInstruction = systemContent;
-            // Duplicate in snake_case to match REST expectations.
-            requestBody["system_instruction"] = systemContent;
         }
 
         if (Object.keys(generationConfig).length > 0) {
