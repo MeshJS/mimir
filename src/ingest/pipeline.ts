@@ -3,9 +3,10 @@ import type { AppConfig } from "../config/types";
 import type { LLMClientBundle } from "../llm/types";
 import { getLogger } from "../utils/logger";
 import { downloadGithubMdxFiles, GithubMdxDocument } from "./github";
-import { chunkMdxFile, MdxChunk } from "./chunker";
+import { chunkMdxFile, enforceChunkTokenLimit, MdxChunk } from "./chunker";
 import type { SupabaseVectorStore, ExistingChunkInfo } from "../supabase/client";
 import type { DocumentChunk } from "../supabase/types";
+import { resolveEmbeddingInputTokenLimit } from "../llm/modelLimits";
 
 interface PendingEmbeddingChunk {
     filepath: string;
@@ -47,6 +48,7 @@ export async function runIngestionPipeline(
         : baseLogger;
 
     const documents = await downloadGithubMdxFiles(appConfig);
+    const chunkTokenLimit = resolveEmbeddingInputTokenLimit(llm.embedding.config);
 
     const stats: IngestionPipelineStats = {
         processedDocuments: 0,
@@ -69,18 +71,29 @@ export async function runIngestionPipeline(
             ? ingestionLogger.child({ file: filepath })
             : ingestionLogger;
 
-        const mdxChunks = chunkMdxFile(document.content);
+        const rawChunks = chunkMdxFile(document.content);
+        const preparedChunks = enforceChunkTokenLimit(rawChunks, {
+            tokenLimit: chunkTokenLimit,
+            model: llm.embedding.config.model,
+        });
 
-        if (mdxChunks.length === 0) {
+        if (preparedChunks.length === 0) {
             stats.skippedDocuments += 1;
             fileLogger.warn("No chunks were generated for this document. Skipping.");
             continue;
         }
 
+        const additionalChunks = preparedChunks.length - rawChunks.length;
+        if (additionalChunks > 0) {
+            fileLogger.info(
+                `Split ${additionalChunks} oversized chunk${additionalChunks === 1 ? "" : "s"} to respect the ${chunkTokenLimit} token embedding limit.`
+            );
+        }
+
         stats.processedDocuments += 1;
 
         const existing = await store.fetchExistingChunks(filepath);
-        const diff = diffChunks(mdxChunks, existing);
+        const diff = diffChunks(preparedChunks, existing);
 
         if (diff.reordered.length > 0) {
             pendingReorders.push(...diff.reordered);

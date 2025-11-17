@@ -40,6 +40,7 @@ export interface ProviderLimitsConfig {
     concurrency?: number;
     maxRequestsPerMinute?: number;
     maxTokensPerMinute?: number;
+    maxTokensPerRequest?: number;
     retries?: number;
 }
 
