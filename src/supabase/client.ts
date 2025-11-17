@@ -13,7 +13,8 @@ interface SupabaseDocRow {
     chunk_id: number;
     chunk_title: string;
     checksum: string;
-    similarity: number;
+    similarity?: number;
+    bm25_rank?: number;
 }
 
 export interface ExistingChunkInfo {
@@ -174,7 +175,7 @@ export class SupabaseVectorStore {
 
     async matchDocuments(
         embedding: number[],
-        options?: { matchCount?: number, similarityThreshold?: number }
+        options?: { matchCount?: number; similarityThreshold?: number }
     ): Promise<RetrievedChunk[]> {
         const matchCount = options?.matchCount ?? this.config.matchCount;
         const similarityThreshold = options?.similarityThreshold ?? this.config.similarityThreshold;
@@ -198,7 +199,35 @@ export class SupabaseVectorStore {
             chunkTitle: row.chunk_title,
             filepath: row.filepath,
             checksum: row.checksum,
-            similarity: row.similarity
+            similarity: row.similarity,
+        }));
+    }
+
+    async searchDocumentsFullText(
+        query: string,
+        options?: { matchCount?: number }
+    ): Promise<RetrievedChunk[]> {
+        const matchCount = options?.matchCount ?? this.config.bm25MatchCount ?? this.config.matchCount;
+
+        const { data, error } = await this.client.rpc("match_docs_bm25", {
+            query,
+            match_count: matchCount,
+        });
+
+        if (error) {
+            this.logger.error(`Failed to execute match_docs_bm25 RPC: ${error.message}`);
+            throw new Error(`Failed to execute match_docs_bm25 RPC: ${error.message}`);
+        }
+
+        return ((data ?? []) as SupabaseDocRow[]).map((row) => ({
+            content: row.content,
+            contextualText: row.contextual_text,
+            embedding: row.embedding,
+            chunkId: row.chunk_id,
+            chunkTitle: row.chunk_title,
+            filepath: row.filepath,
+            checksum: row.checksum,
+            bm25Rank: row.bm25_rank,
         }));
     }
 

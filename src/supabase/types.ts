@@ -11,5 +11,6 @@ export interface DocumentChunk {
 }
 
 export interface RetrievedChunk extends DocumentChunk {
-    similarity: number;
+    similarity?: number;
+    bm25Rank?: number;
 }

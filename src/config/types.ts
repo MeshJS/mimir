@@ -14,6 +14,8 @@ export interface SupabaseConfig {
     table: string;
     similarityThreshold: number;
     matchCount: number;
+     bm25MatchCount?: number;
+     enableHybridSearch?: boolean;
 }
 
 export interface GithubConfig {

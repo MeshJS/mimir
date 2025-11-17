@@ -23,7 +23,9 @@
     "serviceRoleKey": "your_service_role_key",
     "table": "documents",
     "similarityThreshold": 0.2,
-    "matchCount": 10
+    "matchCount": 10,
+    "bm25MatchCount": 10,
+    "enableHybridSearch": true
   },
   "llm": {
     "embedding": {

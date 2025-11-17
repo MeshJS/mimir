@@ -7,6 +7,7 @@ import {
 } from "../github/utils";
 import type { LLMClientBundle } from "../llm/types";
 import type { SupabaseVectorStore } from "../supabase/client";
+import type { RetrievedChunk } from "../supabase/types";
 import type { Logger } from "pino";
 import { getLogger } from "../utils/logger";
 import { slugifyHeading } from "../utils/slugify";
@@ -15,6 +16,8 @@ export interface AskAiOptions {
     question: string;
     matchCount?: number;
     similarityThreshold?: number;
+    bm25MatchCount?: number;
+    enableHybridSearch?: boolean;
     systemPrompt?: string;
     onToken?: (chunk: string) => void;
     signal?: AbortSignal;
@@ -46,6 +49,7 @@ export async function askAi(
 ): Promise<AskAiResult> {
     const activeLogger = context?.logger ?? getLogger();
     const trimmedQuestion = options.question.trim();
+    const supabaseConfig = context?.config?.supabase;
 
     if (!trimmedQuestion) {
         throw new Error("Question cannot be empty.");
@@ -55,10 +59,34 @@ export async function askAi(
     const queryEmbedding = await llm.embedding.embedQuery(trimmedQuestion, { signal: options.signal });
 
     activeLogger.info("Retrieving similar chunks from Supabase.");
-    const matches = await store.matchDocuments(queryEmbedding, {
-        matchCount: options.matchCount,
-        similarityThreshold: options.similarityThreshold,
+    const desiredMatchCount = options.matchCount ?? supabaseConfig?.matchCount ?? 10;
+    const similarityThreshold = options.similarityThreshold ?? supabaseConfig?.similarityThreshold;
+
+    const vectorMatches = await store.matchDocuments(queryEmbedding, {
+        matchCount: desiredMatchCount,
+        similarityThreshold,
     });
+
+    let keywordMatches: RetrievedChunk[] = [];
+    const hybridConfigEnabled = supabaseConfig?.enableHybridSearch ?? true;
+    const shouldUseHybrid = options.enableHybridSearch ?? hybridConfigEnabled;
+
+    if (shouldUseHybrid) {
+        const bm25MatchCount = options.bm25MatchCount ?? supabaseConfig?.bm25MatchCount ?? desiredMatchCount;
+        try {
+            keywordMatches = await store.searchDocumentsFullText(trimmedQuestion, {
+                matchCount: bm25MatchCount,
+            });
+            activeLogger.info(`Retrieved bm25 ${keywordMatches.flatMap((v) => console.log(v))}`);
+        } catch (error) {
+            activeLogger.error(
+                { err: error },
+                "BM25 search failed; continuing with vector results only."
+            );
+        }
+    }
+
+    const matches = mergeAndRankMatches(vectorMatches, keywordMatches, desiredMatchCount);
 
     if (matches.length === 0) {
         activeLogger.warn("No similar chunks found for query.");
@@ -183,4 +211,59 @@ function computeDocsUrl(filepath: string, config?: AppConfig): string | undefine
     }
 
     return `${normalizedBase}/${encodedRelative}`;
+}
+
+function mergeAndRankMatches(
+    vectorMatches: RetrievedChunk[],
+    keywordMatches: RetrievedChunk[],
+    desiredCount: number
+): RetrievedChunk[] {
+    const keyFor = (chunk: RetrievedChunk): string => `${chunk.filepath}:${chunk.chunkId}`;
+    const combined = new Map<string, RetrievedChunk>();
+    const vectorOrder = new Map<string, number>();
+    const keywordOrder = new Map<string, number>();
+
+    vectorMatches.forEach((match, index) => {
+        const key = keyFor(match);
+        combined.set(key, match);
+        vectorOrder.set(key, index);
+    });
+
+    keywordMatches.forEach((match, index) => {
+        const key = keyFor(match);
+        const existing = combined.get(key);
+        if (existing) {
+            existing.bm25Rank = match.bm25Rank ?? existing.bm25Rank;
+        } else {
+            combined.set(key, match);
+        }
+        keywordOrder.set(key, index);
+    });
+
+    const rankValue = (value?: number): number => (typeof value === "number" ? value : Number.NEGATIVE_INFINITY);
+
+    const merged = Array.from(combined.values());
+    merged.sort((a, b) => {
+        const similarityDiff = rankValue(b.similarity) - rankValue(a.similarity);
+        if (similarityDiff !== 0) {
+            return similarityDiff;
+        }
+
+        const bm25Diff = rankValue(b.bm25Rank) - rankValue(a.bm25Rank);
+        if (bm25Diff !== 0) {
+            return bm25Diff;
+        }
+
+        const vectorRankDiff =
+            (vectorOrder.get(keyFor(a)) ?? Number.MAX_SAFE_INTEGER) -
+            (vectorOrder.get(keyFor(b)) ?? Number.MAX_SAFE_INTEGER);
+        if (vectorRankDiff !== 0) {
+            return vectorRankDiff;
+        }
+
+        return (keywordOrder.get(keyFor(a)) ?? Number.MAX_SAFE_INTEGER) -
+            (keywordOrder.get(keyFor(b)) ?? Number.MAX_SAFE_INTEGER);
+    });
+
+    return merged.slice(0, desiredCount);
 }
