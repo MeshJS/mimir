@@ -11,6 +11,7 @@ import type { RetrievedChunk } from "../supabase/types";
 import type { Logger } from "pino";
 import { getLogger } from "../utils/logger";
 import { slugifyHeading } from "../utils/slugify";
+import { stripWrappingQuotes } from "../utils/extractTitle";
 
 export interface AskAiOptions {
     question: string;
@@ -77,7 +78,6 @@ export async function askAi(
             keywordMatches = await store.searchDocumentsFullText(trimmedQuestion, {
                 matchCount: bm25MatchCount,
             });
-            activeLogger.info(`Retrieved bm25 ${keywordMatches.flatMap((v) => console.log(v))}`);
         } catch (error) {
             activeLogger.error(
                 { err: error },
@@ -96,28 +96,6 @@ export async function askAi(
         };
     }
 
-    const sources: AskAiSource[] = matches.map((match) => {
-        const { githubUrl, docsUrl, baseUrl } = resolveSourceLinks(match.filepath, context?.config);
-        const slug = slugifyHeading(match.chunkTitle);
-
-        let finalUrl = baseUrl;
-        if (finalUrl && slug) {
-            finalUrl = `${finalUrl}#${slug}`;
-        }
-
-        if (!finalUrl) {
-            finalUrl = githubUrl ?? docsUrl ?? match.filepath;
-        }
-
-        return {
-            filepath: match.filepath,
-            chunkTitle: match.chunkTitle,
-            githubUrl,
-            docsUrl,
-            finalUrl,
-        };
-    });
-
     activeLogger.info({ matchCount: matches.length }, "Generating answer with retrieved context.");
 
     const answer = await llm.chat.generateAnswer({
@@ -128,9 +106,21 @@ export async function askAi(
         signal: options.signal,
     });
 
-    activeLogger.info({ answer }, "answer from the AI");
+    const citedIndexes = extractUsedSourceIndexes(answer);
+    let citedMatches = selectMatchesByIndexes(matches, citedIndexes);
+    if (citedIndexes.length > 0 && citedMatches.length === 0) {
+        activeLogger.warn("Model referenced invalid source indexes; falling back to full match set.");
+    }
 
-    return { answer, sources };
+    if (citedMatches.length === 0) {
+        citedMatches = matches;
+    }
+
+    const sources = buildSourcesFromMatches(citedMatches, context?.config);
+    const answerWithSources = appendSourcesSection(answer, sources);
+    activeLogger.info({ answer: answerWithSources }, "answer from the AI");
+
+    return { answer: answerWithSources, sources };
 }
 
 function resolveSourceLinks(
@@ -266,4 +256,133 @@ function mergeAndRankMatches(
     });
 
     return merged.slice(0, desiredCount);
+}
+
+function buildSourcesFromMatches(matches: RetrievedChunk[], config?: AppConfig): AskAiSource[] {
+    const seen = new Set<string>();
+    const sources: AskAiSource[] = [];
+
+    matches.forEach((match) => {
+        const key = `${match.filepath}:${match.chunkId}`;
+        if (seen.has(key)) {
+            return;
+        }
+        seen.add(key);
+
+        const { githubUrl, docsUrl, baseUrl } = resolveSourceLinks(match.filepath, config);
+        const sanitizedTitle = sanitizeSourceTitle(match.chunkTitle, match.filepath);
+        const slug = slugifyHeading(sanitizedTitle);
+
+        let finalUrl = baseUrl;
+        if (finalUrl && slug) {
+            finalUrl = `${finalUrl}#${slug}`;
+        }
+
+        if (!finalUrl) {
+            finalUrl = githubUrl ?? docsUrl ?? match.filepath;
+        }
+
+        sources.push({
+            filepath: match.filepath,
+            chunkTitle: sanitizedTitle,
+            githubUrl,
+            docsUrl,
+            finalUrl,
+        });
+    });
+
+    return sources;
+}
+
+function extractUsedSourceIndexes(answer: string): number[] {
+    if (!answer) {
+        return [];
+    }
+
+    const indexes: number[] = [];
+    const seen = new Set<number>();
+    const citationRegex = /\[S\s*(\d+)\]/gi;
+    let match: RegExpExecArray | null;
+
+    const addIndex = (value?: number) => {
+        if (typeof value !== "number" || !Number.isFinite(value)) {
+            return;
+        }
+        const normalized = Math.floor(value);
+        if (normalized > 0 && !seen.has(normalized)) {
+            seen.add(normalized);
+            indexes.push(normalized);
+        }
+    };
+
+    while ((match = citationRegex.exec(answer)) !== null) {
+        addIndex(Number.parseInt(match[1], 10));
+    }
+
+    const summaryRegex = /Sources?:\s*([^\n]+)/gi;
+    while ((match = summaryRegex.exec(answer)) !== null) {
+        const segment = match[1];
+        const tokens = segment.match(/S\s*(\d+)/gi) ?? [];
+        tokens.forEach((token) => {
+            const value = token.match(/\d+/);
+            if (value) {
+                addIndex(Number.parseInt(value[0], 10));
+            }
+        });
+    }
+
+    return indexes;
+}
+
+function selectMatchesByIndexes(matches: RetrievedChunk[], indexes: number[]): RetrievedChunk[] {
+    if (indexes.length === 0) {
+        return [];
+    }
+
+    const selected: RetrievedChunk[] = [];
+    const seenKeys = new Set<string>();
+
+    indexes.forEach((index) => {
+        const pointer = index - 1;
+        if (pointer < 0 || pointer >= matches.length) {
+            return;
+        }
+        const candidate = matches[pointer];
+        const key = `${candidate.filepath}:${candidate.chunkId}`;
+        if (!seenKeys.has(key)) {
+            seenKeys.add(key);
+            selected.push(candidate);
+        }
+    });
+
+    return selected;
+}
+
+function appendSourcesSection(answer: string, sources: AskAiSource[]): string {
+    if (!sources.length) {
+        return answer;
+    }
+
+    const SOURCE_TRAILER_REGEX = /(?:\r?\n)*Sources?:\s*(?:S\d+(?:\s*,\s*S\d+)*)\s*$/i;
+    let sanitizedAnswer = answer?.trimEnd() ?? "";
+    sanitizedAnswer = sanitizedAnswer.replace(SOURCE_TRAILER_REGEX, "").trimEnd();
+
+    const lines = sources.map((source, index) => {
+        const label = sanitizeSourceTitle(source.chunkTitle, source.filepath) || `Source ${index + 1}`;
+        const href = source.finalUrl || source.githubUrl || source.docsUrl || source.filepath;
+
+        if (href) {
+            return `- [${label}](${href})`;
+        }
+        return `- ${label}`;
+    });
+
+    const section = ["", "Sources:", ...lines].join("\n");
+    return `${sanitizedAnswer}${section}`;
+}
+
+function sanitizeSourceTitle(title?: string, fallback?: string): string {
+    const candidate = title ?? fallback ?? "";
+    const sanitized = stripWrappingQuotes(candidate);
+    return sanitized || (fallback ?? "");
 }

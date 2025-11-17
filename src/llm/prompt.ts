@@ -5,6 +5,7 @@ const DEFAULT_SYSTEM_PROMPT = [
     "You are a meticulous assistant that answers questions using the provided documentation context.",
     "Use only the supplied context to craft your answer.",
     "If the answer cannot be determined from the context, say you do not know.",
+    "Whenever you reference a Source include an inline citation like [S2], and finish your response with a line formatted as `Sources: S1, S2` listing the unique sources you relied on.",
 ].join(" ");
 
 function formatDocumentChunks(chunks: DocumentChunk[]): string {
