@@ -21,7 +21,7 @@ export function extractTitle(line: string, options?: { isFrontmatter?: boolean }
     let rawTitle: string;
     if(options?.isFrontmatter) {
         const match = line.match(/title\s*:\s*(.+)/);
-        rawTitle = match ? match[1] : "";
+        rawTitle = match ? match[1] : "Intro";
     } else {
         rawTitle = line.replace(/^#+\s*/, "").trim();
     }

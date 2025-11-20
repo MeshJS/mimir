@@ -9,6 +9,9 @@ create table if not exists docs (
     chunk_id integer not null,
     chunk_title text not null,
     checksum text not null,
+    github_url text,
+    docs_url text,
+    final_url text,
     search_tokens tsvector generated always as (
         setweight(to_tsvector('english', coalesce(chunk_title, '')), 'A') ||
         setweight(to_tsvector('english', coalesce(content, '')), 'B') ||
@@ -61,6 +64,9 @@ returns table (
     chunk_id integer,
     chunk_title text,
     checksum text,
+    github_url text,
+    docs_url text,
+    final_url text,
     similarity float
 ) language sql as $$
   select
@@ -72,6 +78,9 @@ returns table (
     chunk_id,
     chunk_title,
     checksum,
+    github_url,
+    docs_url,
+    final_url,
     1 - (embedding <=> query_embedding) as similarity
   from docs
   where 1 - (embedding <=> query_embedding) >= similarity_threshold
@@ -92,6 +101,9 @@ returns table (
     chunk_id integer,
     chunk_title text,
     checksum text,
+    github_url text,
+    docs_url text,
+    final_url text,
     bm25_rank float
 ) language sql as $$
   with search_query as (
@@ -106,6 +118,9 @@ returns table (
       d.chunk_id,
       d.chunk_title,
       d.checksum,
+      d.github_url,
+      d.docs_url,
+      d.final_url,
       ts_rank_cd(d.search_tokens, sq.ts_query) as bm25_rank
   from docs d
   cross join search_query sq

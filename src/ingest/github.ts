@@ -338,7 +338,7 @@ function isMdxFile(filename: string): boolean {
 }
 
 async function persistDocuments(directory: string, documents: GithubMdxDocument[], logger: Logger): Promise<void> {
-    await fs.mkdir(directory, { recursive: true });
+    await resetOutputDirectory(directory, logger);
 
     for(const doc of documents) {
         const localPath = path.join(directory, ...doc.path.split("/"));
@@ -349,4 +349,15 @@ async function persistDocuments(directory: string, documents: GithubMdxDocument[
 
         logger.debug(`Saved MDX file to ${localPath}`);
     }
+}
+
+async function resetOutputDirectory(directory: string, logger: Logger): Promise<void> {
+    try {
+        await fs.rm(directory, { recursive: true, force: true });
+        logger.debug({ directory }, "Cleared cached MDX directory before download.");
+    } catch (error) {
+        logger.warn({ directory, err: error }, "Failed to clear cached MDX directory; continuing.");
+    }
+
+    await fs.mkdir(directory, { recursive: true });
 }

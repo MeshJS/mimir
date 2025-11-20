@@ -4,7 +4,9 @@
     "pretty": true
   },
   "server": {
-    "apiKey": "change-me"
+    "apiKey": "change-me",
+    "githubWebhookSecret": "your-shared-secret",
+    "fallbackIngestIntervalMinutes": 60
   },
   "docs": {
     "baseUrl": "https://your-domain.com/",

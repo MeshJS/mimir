@@ -1,17 +1,10 @@
 import type { AppConfig } from "../config/types";
-import {
-    DEFAULT_BRANCH,
-    buildSourceUrl,
-    joinRepoPaths,
-    parseGithubUrl,
-} from "../github/utils";
 import type { LLMClientBundle } from "../llm/types";
 import type { SupabaseVectorStore } from "../supabase/client";
 import type { RetrievedChunk } from "../supabase/types";
 import type { Logger } from "pino";
 import { getLogger } from "../utils/logger";
-import { slugifyHeading } from "../utils/slugify";
-import { stripWrappingQuotes } from "../utils/extractTitle";
+import { sanitizeSourceTitle } from "../utils/sourceLinks";
 
 export interface AskAiOptions {
     question: string;
@@ -116,91 +109,17 @@ export async function askAi(
         citedMatches = matches;
     }
 
-    const sources = buildSourcesFromMatches(citedMatches, context?.config);
+    const sources = dedupeMatches(citedMatches).map((match) => ({
+        filepath: match.filepath,
+        chunkTitle: sanitizeSourceTitle(match.chunkTitle, match.filepath),
+        githubUrl: match.githubUrl ?? undefined,
+        docsUrl: match.docsUrl ?? undefined,
+        finalUrl: match.finalUrl ?? match.githubUrl ?? match.docsUrl ?? match.filepath,
+    }));
     const answerWithSources = appendSourcesSection(answer, sources);
     activeLogger.info({ answer: answerWithSources }, "answer from the AI");
 
     return { answer: answerWithSources, sources };
-}
-
-function resolveSourceLinks(
-    filepath: string,
-    config?: AppConfig
-): { githubUrl?: string; docsUrl?: string; baseUrl?: string } {
-    const githubUrl = computeGithubUrl(filepath, config);
-    const docsUrl = computeDocsUrl(filepath, config);
-
-    return {
-        githubUrl,
-        docsUrl,
-        baseUrl: docsUrl ?? githubUrl,
-    };
-}
-
-function computeGithubUrl(filepath: string, config?: AppConfig): string | undefined {
-    const githubConfig = config?.github;
-    if (!githubConfig?.githubUrl) {
-        return undefined;
-    }
-
-    try {
-        const parsed = parseGithubUrl(githubConfig.githubUrl);
-        const branch = githubConfig.branch ?? parsed.branch ?? DEFAULT_BRANCH;
-        const scopedPath = joinRepoPaths(parsed.path, githubConfig.directory);
-        const repoPath = joinRepoPaths(scopedPath, filepath);
-        return buildSourceUrl(parsed.owner, parsed.repo, branch, repoPath);
-    } catch {
-        return undefined;
-    }
-}
-
-function computeDocsUrl(filepath: string, config?: AppConfig): string | undefined {
-    const docsConfig = config?.docs;
-    const baseUrl = docsConfig?.baseUrl;
-
-    if (!baseUrl) {
-        return undefined;
-    }
-
-    if (!/\.(md|mdx)$/i.test(filepath)) {
-        return undefined;
-    }
-
-    const contentPrefix = docsConfig.contentPath ?? "content/docs";
-    let relativePath = filepath;
-
-    if (relativePath.startsWith(`${contentPrefix}/`)) {
-        relativePath = relativePath.slice(contentPrefix.length + 1);
-    }
-
-    relativePath = relativePath.replace(/\.(md|mdx)$/i, "");
-
-    if (relativePath.endsWith("/index")) {
-        relativePath = relativePath.slice(0, -"/index".length);
-    }
-
-    const normalizedBase =
-        baseUrl === ""
-            ? ""
-            : baseUrl.endsWith("/")
-            ? baseUrl.slice(0, -1)
-            : baseUrl;
-
-    if (!relativePath) {
-        return normalizedBase || "/";
-    }
-
-    const encodedRelative = relativePath
-        .split("/")
-        .filter((segment) => segment.length > 0)
-        .map((segment) => encodeURIComponent(segment))
-        .join("/");
-
-    if (!normalizedBase) {
-        return `/${encodedRelative}`;
-    }
-
-    return `${normalizedBase}/${encodedRelative}`;
 }
 
 function mergeAndRankMatches(
@@ -258,40 +177,18 @@ function mergeAndRankMatches(
     return merged.slice(0, desiredCount);
 }
 
-function buildSourcesFromMatches(matches: RetrievedChunk[], config?: AppConfig): AskAiSource[] {
+function dedupeMatches(matches: RetrievedChunk[]): RetrievedChunk[] {
     const seen = new Set<string>();
-    const sources: AskAiSource[] = [];
-
+    const unique: RetrievedChunk[] = [];
     matches.forEach((match) => {
         const key = `${match.filepath}:${match.chunkId}`;
         if (seen.has(key)) {
             return;
         }
         seen.add(key);
-
-        const { githubUrl, docsUrl, baseUrl } = resolveSourceLinks(match.filepath, config);
-        const sanitizedTitle = sanitizeSourceTitle(match.chunkTitle, match.filepath);
-        const slug = slugifyHeading(sanitizedTitle);
-
-        let finalUrl = baseUrl;
-        if (finalUrl && slug) {
-            finalUrl = `${finalUrl}#${slug}`;
-        }
-
-        if (!finalUrl) {
-            finalUrl = githubUrl ?? docsUrl ?? match.filepath;
-        }
-
-        sources.push({
-            filepath: match.filepath,
-            chunkTitle: sanitizedTitle,
-            githubUrl,
-            docsUrl,
-            finalUrl,
-        });
+        unique.push(match);
     });
-
-    return sources;
+    return unique;
 }
 
 function extractUsedSourceIndexes(answer: string): number[] {
@@ -379,10 +276,4 @@ function appendSourcesSection(answer: string, sources: AskAiSource[]): string {
 
     const section = ["", "Sources:", ...lines].join("\n");
     return `${sanitizedAnswer}${section}`;
-}
-
-function sanitizeSourceTitle(title?: string, fallback?: string): string {
-    const candidate = title ?? fallback ?? "";
-    const sanitized = stripWrappingQuotes(candidate);
-    return sanitized || (fallback ?? "");
 }

@@ -18,7 +18,7 @@ export function chunkMdxFile(mdxFileContent: string): MdxChunk[] {
         if(!currentChunk.hasContent) return;
         const lines = currentChunk.lines.join("\n");
         chunks.push({
-            chunkTitle: currentChunk.heading,
+            chunkTitle: currentChunk.heading || "Intro",
             chunkContent: lines,
             checksum: calculateChecksum(lines)
         })
@@ -27,10 +27,11 @@ export function chunkMdxFile(mdxFileContent: string): MdxChunk[] {
 
     for(const line of lines) {
         const trimmed = line.trim();
-        const isHeading = trimmed.startsWith("#") && !trimmed.endsWith("[!toc]");
+        const isLevel2Heading = /^##(?!#)(?:\s|$)/.test(trimmed);
+        const isHeadingToc = trimmed.endsWith("[!toc]");
         const isFrontmatterTitle = trimmed.startsWith("title");
 
-        if(isHeading) {
+        if(isLevel2Heading && !isHeadingToc) {
             flushChunk();
             currentChunk.heading = extractTitle(trimmed);
             currentChunk.lines.push(trimmed);

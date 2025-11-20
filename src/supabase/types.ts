@@ -6,6 +6,9 @@ export interface DocumentChunk {
     chunkId: number;
     chunkTitle: string;
     checksum: string;
+    githubUrl?: string;
+    docsUrl?: string;
+    finalUrl?: string;
     createdAt?: string;
     updatedAt?: string;
 }

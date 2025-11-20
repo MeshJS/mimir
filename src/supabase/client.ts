@@ -13,6 +13,9 @@ interface SupabaseDocRow {
     chunk_id: number;
     chunk_title: string;
     checksum: string;
+    github_url?: string;
+    docs_url?: string;
+    final_url?: string;
     similarity?: number;
     bm25_rank?: number;
 }
@@ -82,7 +85,10 @@ export class SupabaseVectorStore {
             filepath: chunk.filepath,
             chunk_id: chunk.chunkId,
             chunk_title: chunk.chunkTitle,
-            checksum: chunk.checksum
+            checksum: chunk.checksum,
+            github_url: chunk.githubUrl,
+            docs_url: chunk.docsUrl,
+            final_url: chunk.finalUrl,
         }));
 
         const { error } = await this.client
@@ -199,6 +205,9 @@ export class SupabaseVectorStore {
             chunkTitle: row.chunk_title,
             filepath: row.filepath,
             checksum: row.checksum,
+            githubUrl: row.github_url ?? undefined,
+            docsUrl: row.docs_url ?? undefined,
+            finalUrl: row.final_url ?? undefined,
             similarity: row.similarity,
         }));
     }
@@ -227,6 +236,9 @@ export class SupabaseVectorStore {
             chunkTitle: row.chunk_title,
             filepath: row.filepath,
             checksum: row.checksum,
+            githubUrl: row.github_url ?? undefined,
+            docsUrl: row.docs_url ?? undefined,
+            finalUrl: row.final_url ?? undefined,
             bm25Rank: row.bm25_rank,
         }));
     }

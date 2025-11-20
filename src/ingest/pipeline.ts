@@ -7,6 +7,7 @@ import { chunkMdxFile, enforceChunkTokenLimit, MdxChunk } from "./chunker";
 import type { SupabaseVectorStore, ExistingChunkInfo } from "../supabase/client";
 import type { DocumentChunk } from "../supabase/types";
 import { resolveEmbeddingInputTokenLimit } from "../llm/modelLimits";
+import { resolveSourceLinks } from "../utils/sourceLinks";
 
 interface PendingEmbeddingChunk {
     filepath: string;
@@ -182,15 +183,21 @@ export async function runIngestionPipeline(
         );
     }
 
-    const upsertPayload: DocumentChunk[] = pendingEmbeddings.map((entry, index) => ({
-        content: entry.content,
-        contextualText: entry.contextualText,
-        embedding: embeddings[index],
-        filepath: entry.filepath,
-        chunkId: entry.chunkId,
-        chunkTitle: entry.chunkTitle,
-        checksum: entry.checksum,
-    }));
+    const upsertPayload: DocumentChunk[] = pendingEmbeddings.map((entry, index) => {
+        const links = resolveSourceLinks(entry.filepath, entry.chunkTitle, appConfig);
+        return {
+            content: entry.content,
+            contextualText: entry.contextualText,
+            embedding: embeddings[index],
+            filepath: entry.filepath,
+            chunkId: entry.chunkId,
+            chunkTitle: entry.chunkTitle,
+            checksum: entry.checksum,
+            githubUrl: links.githubUrl,
+            docsUrl: links.docsUrl,
+            finalUrl: links.finalUrl,
+        };
+    });
 
     await store.upsertChunks(upsertPayload);
 

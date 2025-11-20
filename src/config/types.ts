@@ -5,6 +5,8 @@ export interface LoggingConfig {
 
 export interface ServerConfig {
     apiKey: string;
+    githubWebhookSecret?: string;
+    fallbackIngestIntervalMinutes?: number;
 }
 
 export interface SupabaseConfig {
