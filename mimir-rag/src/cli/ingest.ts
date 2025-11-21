@@ -2,25 +2,25 @@ import { configureLogger, getLogger } from "../utils/logger";
 import { createLLMClient } from "../llm/factory";
 import { createSupabaseStore } from "../supabase/client";
 import { runIngestionPipeline, type IngestionPipelineStats } from "../ingest/pipeline";
-import { loadAppConfig, resolveConfigPath } from "../config/loadConfig";
+import { loadAppConfig, resolveEnvPath } from "../config/loadConfig";
 
 interface CliOptions {
-    configPath: string;
+    envPath?: string;
 }
 
 function printHelp(): void {
     const lines = [
-        "Usage: ingest --config <path-to-config.json>",
+        "Usage: ingest [--env <path-to-env>]",
         "",
         "Options:",
-        "  -c, --config   Path to the JSON configuration file.",
+        "  -e, --env      Path to a .env file (defaults to resolver logic).",
         "  -h, --help     Show this help message.",
     ];
     console.log(lines.join("\n"));
 }
 
 function parseArgs(argv: string[]): CliOptions {
-    let configPath: string | undefined;
+    let envPath: string | undefined;
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
@@ -30,18 +30,18 @@ function parseArgs(argv: string[]): CliOptions {
             process.exit(0);
         }
 
-        if (arg === "-c" || arg === "--config") {
-            configPath = argv[i + 1];
+        if (arg === "-e" || arg === "--env") {
+            envPath = argv[i + 1];
             i += 1;
             continue;
         }
 
-        if (!configPath) {
-            configPath = arg;
+        if (!envPath) {
+            envPath = arg;
         }
     }
 
-    return { configPath: resolveConfigPath(configPath) };
+    return { envPath };
 }
 
 function logStats(stats: IngestionPipelineStats): void {
@@ -55,12 +55,18 @@ function logStats(stats: IngestionPipelineStats): void {
 
 async function main(): Promise<void> {
     const options = parseArgs(process.argv.slice(2));
-    const config = await loadAppConfig(options.configPath);
+    const envPathHint = options.envPath ?? process.env.MIMIR_ENV_PATH;
+    const resolvedEnvPath = resolveEnvPath(options.envPath);
+    const config = await loadAppConfig({ envPath: options.envPath });
 
     configureLogger(config.logging);
     const logger = getLogger();
 
-    logger.info(`Loaded configuration from ${options.configPath}`);
+    if (envPathHint) {
+        logger.info(`Loaded configuration from ${resolvedEnvPath}`);
+    } else {
+        logger.info("Loaded configuration from environment variables.");
+    }
 
     const llm = createLLMClient(config.llm, logger);
     const store = createSupabaseStore(config);

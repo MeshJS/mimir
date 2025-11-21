@@ -2,7 +2,7 @@ import type { Server } from "node:http";
 import express from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { AppConfig } from "../config/types";
-import { loadAppConfig, resolveConfigPath } from "../config/loadConfig";
+import { loadAppConfig, resolveEnvPath } from "../config/loadConfig";
 import { configureLogger, getLogger } from "../utils/logger";
 import { createLLMClient } from "../llm/factory";
 import type { LLMClientBundle } from "../llm/types";
@@ -13,7 +13,7 @@ import { createApiKeyMiddleware } from "./middleware/apiKey";
 import { isStreamingRequest, streamAskResponse } from "./streamingAsk";
 
 export interface ServerOptions {
-    configPath?: string;
+    envPath?: string;
     port?: number;
 }
 
@@ -33,13 +33,17 @@ export interface RunningServer {
     close(): Promise<void>;
 }
 
-async function createContext(configPath?: string): Promise<ServerContext> {
-    const resolvedPath = resolveConfigPath(configPath);
-    const config = await loadAppConfig(resolvedPath);
+async function createContext(envPath?: string): Promise<ServerContext> {
+    const resolvedPath = resolveEnvPath(envPath);
+    const config = await loadAppConfig({ envPath });
 
     configureLogger(config.logging);
     const logger = getLogger();
-    logger.info({ resolvedPath }, "Loaded server configuration.");
+    if (envPath ?? process.env.MIMIR_ENV_PATH) {
+        logger.info({ envPath: resolvedPath }, "Loaded server configuration from env file.");
+    } else {
+        logger.info("Loaded server configuration from environment variables.");
+    }
 
     const llm = createLLMClient(config.llm, logger);
     const store = createSupabaseStore(config);
@@ -65,7 +69,7 @@ function applyCors(req: any, res: any, next: any): void {
 }
 
 export async function createServer(options: ServerOptions = {}): Promise<{ app: ExpressApp; context: ServerContext }> {
-    const context = await createContext(options.configPath);
+    const context = await createContext(options.envPath);
     const logger = getLogger();
 
     const app = express();

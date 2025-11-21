@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SETUP_SQL="/app/src/supabase/setup.sql"
+SETUP_SQL="/src/supabase/setup.sql"
 
 maybe_run_setup() {
     if [[ -z "${DATABASE_URL:-}" ]]; then

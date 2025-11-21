@@ -5,8 +5,8 @@ DB_PASSWORD ?= $(PGPASSWORD)
 PSQL ?= psql
 SETUP_SQL := src/supabase/setup.sql
 IMAGE_NAME ?= mimir-rag:local
-CONFIG_PATH ?= mimir.config.json
-CONFIG_ABS := $(abspath $(CONFIG_PATH))
+ENV_FILE ?= .env
+ENV_FILE_ABS := $(abspath $(ENV_FILE))
 PORT ?= 3000
 
 setup-db:
@@ -24,7 +24,7 @@ server: setup-db
 	npm run server
 
 ingest:
-	npm run ingest:cli -- --config mimir.config.json
+	npm run ingest:cli
 
 clean:
 	rm -rf dist tmp
@@ -33,8 +33,8 @@ docker-build:
 	docker build -t $(IMAGE_NAME) .
 
 docker-run: docker-build
-	@if [ ! -f "$(CONFIG_ABS)" ]; then \
-		echo "Error: config file '$(CONFIG_PATH)' not found. Pass CONFIG_PATH=... to point at a valid file."; \
+	@if [ ! -f "$(ENV_FILE_ABS)" ]; then \
+		echo "Error: env file '$(ENV_FILE)' not found. Pass ENV_FILE=... to point at a valid file."; \
 		exit 1; \
 	fi
 	@DOCKER_ENV_ARGS=""; \
@@ -46,9 +46,8 @@ docker-run: docker-build
 	fi; \
 	set -x; \
 	docker run --rm \
+		--env-file $(ENV_FILE_ABS) \
 		$$DOCKER_ENV_ARGS \
 		-e PORT=$(PORT) \
-		-e MIMIR_CONFIG_PATH=/app/mimir.config.json \
 		-p $(PORT):$(PORT) \
-		-v $(CONFIG_ABS):/app/mimir.config.json:ro \
 		$(IMAGE_NAME)
