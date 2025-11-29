@@ -77,7 +77,16 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
         })
     );
     app.use(applyCors);
-    app.use(createApiKeyMiddleware(context.config.server.apiKey));
+
+    // Apply API key middleware to all routes except /mcp/* endpoints
+    const apiKeyMiddleware = createApiKeyMiddleware(context.config.server.apiKey);
+    app.use((req: any, res: any, next: any) => {
+        if (req.path.startsWith('/mcp/')) {
+            next();
+        } else {
+            apiKeyMiddleware(req, res, next);
+        }
+    });
 
     const triggerIngestion = async (
         res: any,
@@ -173,6 +182,65 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
             });
         } catch (error) {
             logger.error({ err: error }, "Ask endpoint failed.");
+            res.status(500).json({ status: "error", message: (error as Error).message });
+        }
+    });
+
+    app.post("/mcp/ask", async (req: any, res: any) => {
+        const { question, matchCount, similarityThreshold, systemPrompt, provider, model, apiKey } = req.body ?? {};
+
+        if (typeof question !== "string" || question.trim().length === 0) {
+            res.status(400).json({ status: "error", message: "Request body must include a non-empty 'question' field." });
+            return;
+        }
+
+        // Validate MCP parameters
+        if (!provider || !model || !apiKey) {
+            res.status(400).json({
+                status: "error",
+                message: "Request body must include 'provider', 'model', and 'apiKey' fields."
+            });
+            return;
+        }
+
+        try {
+            // Create a temporary LLM client with the provided credentials
+            const mcpLlm = createLLMClient(
+                {
+                    embedding: context.config.llm.embedding, // Use default embedding
+                    chat: {
+                        provider: provider as any,
+                        model: model,
+                        apiKey: apiKey,
+                        temperature: context.config.llm.chat.temperature,
+                        maxOutputTokens: context.config.llm.chat.maxOutputTokens,
+                    }
+                },
+                logger
+            );
+
+            const response = await askAi(
+                mcpLlm,
+                context.store,
+                {
+                    question,
+                    matchCount,
+                    similarityThreshold,
+                    systemPrompt,
+                },
+                {
+                    logger,
+                    config: context.config,
+                }
+            );
+
+            res.json({
+                status: "ok",
+                answer: response.answer,
+                sources: response.sources,
+            });
+        } catch (error) {
+            logger.error({ err: error }, "MCP Ask endpoint failed.");
             res.status(500).json({ status: "error", message: (error as Error).message });
         }
     });

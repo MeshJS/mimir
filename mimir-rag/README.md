@@ -63,3 +63,102 @@ Key configuration variables include:
 ### LLM Providers
 
 `MIMIR_LLM_EMBEDDING_PROVIDER` supports `openai`, `google`, and `mistral`. The chat provider (`MIMIR_LLM_CHAT_PROVIDER`) can be set independently to `openai`, `google`, `anthropic`, or `mistral`, letting you mix providers (e.g., OpenAI embeddings with Mistral chat completions). Provide the appropriate API key/endpoint per provider. Anthropic currently lacks an embeddings API, so embeddings still need to come from OpenAI, Google, or Mistral.
+
+## API Endpoints
+
+### POST /ask
+
+Query your documentation with authentication required.
+
+**Headers:**
+- `x-api-key: <MIMIR_SERVER_API_KEY>` or `Authorization: Bearer <MIMIR_SERVER_API_KEY>`
+- `Content-Type: application/json`
+
+**Request body:**
+```json
+{
+  "question": "How do I implement authentication?",
+  "matchCount": 10,
+  "similarityThreshold": 0.2,
+  "systemPrompt": "You are a helpful coding assistant"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "answer": "Based on the documentation...",
+  "sources": [...]
+}
+```
+
+### POST /mcp/ask
+
+Query your documentation via MCP (Model Context Protocol) without server API key authentication. This endpoint allows MCP clients to provide their own LLM credentials dynamically.
+
+**Headers:**
+- `Content-Type: application/json`
+
+**Request body:**
+```json
+{
+  "question": "How do I implement authentication?",
+  "provider": "anthropic",
+  "model": "claude-3-5-sonnet-20241022",
+  "apiKey": "your-llm-api-key",
+  "matchCount": 10,
+  "similarityThreshold": 0.2,
+  "systemPrompt": "You are a helpful coding assistant"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "answer": "Based on the documentation...",
+  "sources": [...]
+}
+```
+
+**Note:** The `/mcp/ask` endpoint bypasses the `MIMIR_SERVER_API_KEY` authentication and allows clients to specify their own LLM provider, model, and API key. This is designed for use with the [mimir-mcp](../mimir-mcp) MCP server.
+
+### POST /ingest
+
+Trigger documentation ingestion manually.
+
+**Headers:**
+- `x-api-key: <MIMIR_SERVER_API_KEY>` or `Authorization: Bearer <MIMIR_SERVER_API_KEY>`
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "trigger": "manual-request",
+  "durationMs": 5432,
+  "stats": {...}
+}
+```
+
+### POST /webhook/github
+
+GitHub webhook endpoint for automatic ingestion on repository changes.
+
+**Headers:**
+- `x-hub-signature-256: <github-signature>`
+- `x-github-event: <event-type>`
+
+Requires `MIMIR_SERVER_GITHUB_WEBHOOK_SECRET` to be configured.
+
+### GET /health
+
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "ingestionBusy": false
+}
+```
