@@ -12,6 +12,8 @@ function getEnv(key: string, required = true): string | undefined {
     return value;
 }
 
+function getEnvNumber(key: string): number | undefined;
+function getEnvNumber(key: string, defaultValue: number): number;
 function getEnvNumber(key: string, defaultValue?: number): number | undefined {
     const value = process.env[key];
     if (!value) {
@@ -81,11 +83,6 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
         throw new Error("LLM chat configuration requires MIMIR_LLM_CHAT_PROVIDER and MIMIR_LLM_CHAT_MODEL.");
     }
 
-    const chatTemperature = getEnvNumber("MIMIR_LLM_CHAT_TEMPERATURE");
-    if (chatTemperature === undefined) {
-        throw new Error("LLM chat configuration requires MIMIR_LLM_CHAT_TEMPERATURE.");
-    }
-
     const config: AppConfig = {
         logging: {
             level: (getEnv("MIMIR_LOGGING_LEVEL", false) ?? "info") as AppConfig["logging"]["level"],
@@ -101,9 +98,9 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
             anonKey: getEnv("MIMIR_SUPABASE_ANON_KEY", false),
             serviceRoleKey: supabaseServiceRoleKey,
             table: supabaseTable,
-            similarityThreshold: getEnvNumber("MIMIR_SUPABASE_SIMILARITY_THRESHOLD") ?? 0.2,
-            matchCount: getEnvNumber("MIMIR_SUPABASE_MATCH_COUNT") ?? 10,
-            bm25MatchCount: getEnvNumber("MIMIR_SUPABASE_BM25_MATCH_COUNT"),
+            similarityThreshold: getEnvNumber("MIMIR_SUPABASE_SIMILARITY_THRESHOLD", 0.2),
+            matchCount: getEnvNumber("MIMIR_SUPABASE_MATCH_COUNT", 10),
+            bm25MatchCount: getEnvNumber("MIMIR_SUPABASE_BM25_MATCH_COUNT", 10),
             enableHybridSearch: getEnvBoolean("MIMIR_SUPABASE_ENABLE_HYBRID_SEARCH", true),
         },
         github: {
@@ -111,7 +108,7 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
             directory: getEnv("MIMIR_GITHUB_DIRECTORY", false),
             branch: getEnv("MIMIR_GITHUB_BRANCH", false) ?? "main",
             token: getEnv("MIMIR_GITHUB_TOKEN", false),
-            outputDir: getEnv("MIMIR_GITHUB_OUTPUT_DIR", false),
+            outputDir: getEnv("MIMIR_GITHUB_OUTPUT_DIR", false) ?? "./tmp/github-cache",
         },
         docs: {
             baseUrl: getEnv("MIMIR_DOCS_BASE_URL", false),
@@ -124,11 +121,11 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
                 apiKey: getEnv("MIMIR_LLM_EMBEDDING_API_KEY", false),
                 baseUrl: getEnv("MIMIR_LLM_EMBEDDING_BASE_URL", false),
                 limits: {
-                    batchSize: getEnvNumber("MIMIR_LLM_EMBEDDING_LIMITS_BATCH_SIZE"),
-                    concurrency: getEnvNumber("MIMIR_LLM_EMBEDDING_LIMITS_CONCURRENCY"),
-                    maxRequestsPerMinute: getEnvNumber("MIMIR_LLM_EMBEDDING_LIMITS_MAX_REQUESTS_PER_MINUTE"),
-                    maxTokensPerMinute: getEnvNumber("MIMIR_LLM_EMBEDDING_LIMITS_MAX_TOKENS_PER_MINUTE"),
-                    retries: getEnvNumber("MIMIR_LLM_EMBEDDING_LIMITS_RETRIES"),
+                    batchSize: getEnvNumber("MIMIR_LLM_EMBEDDING_LIMITS_BATCH_SIZE", 100),
+                    concurrency: getEnvNumber("MIMIR_LLM_EMBEDDING_LIMITS_CONCURRENCY", 8),
+                    maxRequestsPerMinute: getEnvNumber("MIMIR_LLM_EMBEDDING_LIMITS_MAX_REQUESTS_PER_MINUTE", 1500),
+                    maxTokensPerMinute: getEnvNumber("MIMIR_LLM_EMBEDDING_LIMITS_MAX_TOKENS_PER_MINUTE", 6250000),
+                    retries: getEnvNumber("MIMIR_LLM_EMBEDDING_LIMITS_RETRIES", 1),
                 },
             },
             chat: {
@@ -136,13 +133,13 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
                 model: chatModel,
                 apiKey: getEnv("MIMIR_LLM_CHAT_API_KEY", false),
                 baseUrl: getEnv("MIMIR_LLM_CHAT_BASE_URL", false),
-                temperature: chatTemperature,
-                maxOutputTokens: getEnvNumber("MIMIR_LLM_CHAT_MAX_OUTPUT_TOKENS"),
+                temperature: getEnvNumber("MIMIR_LLM_CHAT_TEMPERATURE", 0),
+                maxOutputTokens: getEnvNumber("MIMIR_LLM_CHAT_MAX_OUTPUT_TOKENS", 2000),
                 limits: {
-                    concurrency: getEnvNumber("MIMIR_LLM_CHAT_LIMITS_CONCURRENCY"),
-                    maxRequestsPerMinute: getEnvNumber("MIMIR_LLM_CHAT_LIMITS_MAX_REQUESTS_PER_MINUTE"),
-                    maxTokensPerMinute: getEnvNumber("MIMIR_LLM_CHAT_LIMITS_MAX_TOKENS_PER_MINUTE"),
-                    retries: getEnvNumber("MIMIR_LLM_CHAT_LIMITS_RETRIES"),
+                    concurrency: getEnvNumber("MIMIR_LLM_CHAT_LIMITS_CONCURRENCY", 8),
+                    maxRequestsPerMinute: getEnvNumber("MIMIR_LLM_CHAT_LIMITS_MAX_REQUESTS_PER_MINUTE", 500),
+                    maxTokensPerMinute: getEnvNumber("MIMIR_LLM_CHAT_LIMITS_MAX_TOKENS_PER_MINUTE", 90000),
+                    retries: getEnvNumber("MIMIR_LLM_CHAT_LIMITS_RETRIES", 5),
                 },
             },
         },
