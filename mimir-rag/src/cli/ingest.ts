@@ -10,10 +10,10 @@ interface CliOptions {
 
 function printHelp(): void {
     const lines = [
-        "Usage: ingest --config <path-to-config.json>",
+        "Usage: ingest [--config <path-to-env>]",
         "",
         "Options:",
-        "  -c, --config   Path to the JSON configuration file.",
+        "  -c, --config   Path to the .env configuration file (defaults to .env in package root).",
         "  -h, --help     Show this help message.",
     ];
     console.log(lines.join("\n"));

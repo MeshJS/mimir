@@ -18,7 +18,7 @@ export interface GenerateAnswerOptions {
     maxTokens?: number;
     signal?: AbortSignal;
     systemPrompt?: string;
-    onToken?: (chunk: string) => void;
+    stream?: boolean;
 }
 
 export interface EmbeddingProvider {
@@ -29,7 +29,8 @@ export interface EmbeddingProvider {
 
 export interface ChatProvider {
     readonly config: ChatModelConfig;
-    generateAnswer(options: GenerateAnswerOptions): Promise<string>;
+    generateAnswer(options: GenerateAnswerOptions & { stream?: false }): Promise<string>;
+    generateAnswer(options: GenerateAnswerOptions & { stream: true }): Promise<AsyncIterable<string>>;
     generateFileChunkContexts(chunks: string[], fileContent: string): Promise<string[]>;
 }
 

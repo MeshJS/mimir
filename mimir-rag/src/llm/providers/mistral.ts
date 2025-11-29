@@ -3,45 +3,8 @@ import { BaseChatProvider, BaseEmbeddingProvider, type ProviderRateLimits } from
 import type { ChatModelConfig, EmbeddingModelConfig, ProviderLimitsConfig } from "../../config/types";
 import type { EmbedOptions, GenerateAnswerOptions } from "../types";
 import { buildPromptMessages } from "../prompt";
-import { readEventStream } from "../../utils/sse";
-
-interface MistralEmbeddingItem {
-    embedding?: number[];
-}
-
-interface MistralEmbeddingResponse {
-    data?: MistralEmbeddingItem[];
-    error?: {
-        message?: string;
-    };
-}
-
-interface MistralChatChoice {
-    message?: {
-        content?: string;
-    };
-}
-
-interface MistralChatResponse {
-    choices?: MistralChatChoice[];
-    error?: {
-        message?: string;
-    };
-}
-
-interface MistralChatStreamResponse {
-    choices?: Array<{
-        delta?: {
-            content?: string;
-        };
-        message?: {
-            content?: string;
-        };
-    }>;
-    error?: {
-        message?: string;
-    };
-}
+import { createMistral } from '@ai-sdk/mistral';
+import { embedMany, generateText, streamText } from 'ai';
 
 const MISTRAL_DEFAULT_BASE_URL = "https://api.mistral.ai/";
 
@@ -64,48 +27,8 @@ function mergeLimits(defaults: ProviderRateLimits, override?: ProviderLimitsConf
     };
 }
 
-async function parseMistralError(response: Response, fallback: string): Promise<never> {
-    let details = fallback;
-
-    try {
-        const body = (await response.json()) as MistralEmbeddingResponse | MistralChatResponse;
-        const message = body?.error?.message ?? fallback;
-        details = message;
-    } catch {
-        try {
-            details = await response.text();
-        } catch {
-            
-        }
-    }
-
-    throw new Error(details);
-}
-
-function extractEmbeddingVectors(payload: MistralEmbeddingResponse): number[][] {
-    if (!Array.isArray(payload.data) || payload.data.length === 0) {
-        throw new Error("Mistral embedding response is missing vector data.");
-    }
-
-    return payload.data.map((item) => {
-        if (!Array.isArray(item.embedding)) {
-            throw new Error("Mistral embedding vector is malformed.");
-        }
-        return item.embedding;
-    });
-}
-
-function extractChatText(payload: MistralChatResponse): string {
-    const content = payload.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-        throw new Error("Mistral returned an empty chat completion response.");
-    }
-    return content;
-}
-
 export class MistralEmbeddingProvider extends BaseEmbeddingProvider {
-    private readonly apiKey: string;
-    private readonly baseUrl: string;
+    private readonly sdk: ReturnType<typeof createMistral>;
 
     constructor(config: EmbeddingModelConfig, logger?: Logger) {
         if (!config.apiKey) {
@@ -127,37 +50,26 @@ export class MistralEmbeddingProvider extends BaseEmbeddingProvider {
             logger
         );
 
-        this.apiKey = config.apiKey;
-        this.baseUrl = resolveBaseUrl(config.baseUrl);
+        this.sdk = createMistral({
+            apiKey: config.apiKey,
+            baseURL: resolveBaseUrl(config.baseUrl),
+        });
     }
 
     protected async sendEmbeddingRequest(chunks: string[], options?: EmbedOptions): Promise<number[][]> {
-        const url = new URL("v1/embeddings", this.baseUrl);
-        const response = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${this.apiKey}`,
-            },
-            body: JSON.stringify({
-                model: this.config.model,
-                input: chunks,
-            }),
-            signal: options?.signal,
+        const model = this.sdk.embedding(this.config.model);
+        const { embeddings } = await embedMany({
+            model,
+            values: chunks,
+            abortSignal: options?.signal,
         });
 
-        if (!response.ok) {
-            await parseMistralError(response, `Mistral embedding request failed with status ${response.status}.`);
-        }
-
-        const payload = (await response.json()) as MistralEmbeddingResponse;
-        return extractEmbeddingVectors(payload);
+        return embeddings;
     }
 }
 
 export class MistralChatProvider extends BaseChatProvider {
-    private readonly apiKey: string;
-    private readonly baseUrl: string;
+    private readonly sdk: ReturnType<typeof createMistral>;
 
     constructor(config: ChatModelConfig, logger?: Logger) {
         if (!config.apiKey) {
@@ -178,87 +90,31 @@ export class MistralChatProvider extends BaseChatProvider {
             logger
         );
 
-        this.apiKey = config.apiKey;
-        this.baseUrl = resolveBaseUrl(config.baseUrl);
+        this.sdk = createMistral({
+            apiKey: config.apiKey,
+            baseURL: resolveBaseUrl(config.baseUrl),
+        });
     }
 
-    protected async complete(options: GenerateAnswerOptions): Promise<string> {
+    protected async complete(options: GenerateAnswerOptions): Promise<string | AsyncIterable<string>> {
         const { system, user } = buildPromptMessages(options);
-        const url = new URL("v1/chat/completions", this.baseUrl);
-        const shouldStream = typeof options.onToken === "function";
+        const model = this.sdk(this.config.model);
 
-        const temperature = options.temperature ?? this.config.temperature;
-        const maxTokens = options.maxTokens ?? this.config.maxOutputTokens;
-
-        const messages: Array<Record<string, string>> = [];
-        if (system) {
-            messages.push({ role: "system", content: system });
-        }
-        messages.push({ role: "user", content: user });
-
-        const body: Record<string, unknown> = {
-            model: this.config.model,
-            messages,
+        const baseOptions = {
+            model,
+            system,
+            prompt: user,
+            temperature: options.temperature ?? this.config.temperature,
+            maxTokens: options.maxTokens ?? this.config.maxOutputTokens,
+            abortSignal: options.signal,
         };
 
-        if (typeof temperature === "number") {
-            body.temperature = temperature;
+        if (options.stream) {
+            const { textStream } = await streamText(baseOptions);
+            return textStream;
         }
 
-        if (typeof maxTokens === "number") {
-            body.max_tokens = maxTokens;
-        }
-
-        if (shouldStream) {
-            body.stream = true;
-        }
-
-        const response = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${this.apiKey}`,
-                Accept: shouldStream ? "text/event-stream" : "application/json",
-            },
-            body: JSON.stringify(body),
-            signal: options.signal,
-        });
-
-        if (!response.ok) {
-            await parseMistralError(response, `Mistral chat completion failed with status ${response.status}.`);
-        }
-
-        if (shouldStream) {
-            return this.streamCompletion(response, options.onToken!);
-        }
-
-        const payload = (await response.json()) as MistralChatResponse;
-        return extractChatText(payload);
-    }
-
-    private async streamCompletion(response: Response, onToken: (chunk: string) => void): Promise<string> {
-        let fullText = "";
-
-        await readEventStream(response, (event) => {
-            const trimmed = event.data.trim();
-            if (trimmed === "[DONE]") {
-                return false;
-            }
-
-            try {
-                const payload = JSON.parse(trimmed) as MistralChatStreamResponse;
-                const delta = payload.choices?.[0]?.delta?.content;
-                if (delta) {
-                    fullText += delta;
-                    onToken(delta);
-                }
-            } catch (error) {
-                this.logger?.warn({ err: error, data: trimmed }, "Failed to parse Mistral stream chunk.");
-            }
-
-            return true;
-        });
-
-        return fullText.trim();
+        const { text } = await generateText(baseOptions);
+        return text.trim();
     }
 }
