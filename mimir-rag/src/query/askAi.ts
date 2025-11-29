@@ -91,13 +91,33 @@ export async function askAi(
 
     activeLogger.info({ matchCount: matches.length }, "Generating answer with retrieved context.");
 
-    const answer = await llm.chat.generateAnswer({
-        prompt: trimmedQuestion,
-        context: matches,
-        systemPrompt: options.systemPrompt,
-        onToken: options.onToken,
-        signal: options.signal,
-    });
+    let answer: string;
+    if (options.onToken) {
+        // Streaming mode
+        const stream = await llm.chat.generateAnswer({
+            prompt: trimmedQuestion,
+            context: matches,
+            systemPrompt: options.systemPrompt,
+            stream: true,
+            signal: options.signal,
+        });
+
+        let fullText = "";
+        for await (const chunk of stream) {
+            fullText += chunk;
+            options.onToken(chunk);
+        }
+        answer = fullText.trim();
+    } else {
+        // Non-streaming mode
+        answer = await llm.chat.generateAnswer({
+            prompt: trimmedQuestion,
+            context: matches,
+            systemPrompt: options.systemPrompt,
+            stream: false,
+            signal: options.signal,
+        });
+    }
 
     const citedIndexes = extractUsedSourceIndexes(answer);
     let citedMatches = selectMatchesByIndexes(matches, citedIndexes);

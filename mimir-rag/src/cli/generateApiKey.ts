@@ -12,7 +12,7 @@ function printHelp(): void {
         "Usage: generate-api-key [--config <path>] [--bytes <n>]",
         "",
         "Options:",
-        "  -c, --config   Path to mimir.config.json (defaults to resolver logic).",
+        "  -c, --config   Path to .env file (defaults to .env in package root).",
         "  -b, --bytes    Number of random bytes to generate before encoding (default: 32).",
         "  -h, --help     Show this help message.",
     ];
@@ -62,22 +62,50 @@ function generateApiKey(byteLength: number): string {
     return randomBytes(byteLength).toString("base64url");
 }
 
-async function updateConfig(configPath: string, apiKey: string): Promise<void> {
-    const raw = await fs.readFile(configPath, "utf8");
-    const config = JSON.parse(raw) as Record<string, any>;
+async function updateEnvFile(envPath: string, apiKey: string): Promise<void> {
+    let content = "";
+    let previousKey: string | undefined;
 
-    if (typeof config.server !== "object" || config.server === null) {
-        config.server = {};
+    try {
+        content = await fs.readFile(envPath, "utf8");
+    } catch (error) {
+        const err = error as NodeJS.ErrnoException;
+        if (err.code !== "ENOENT") {
+            throw error;
+        }
+        // File doesn't exist, we'll create it
+        console.log(`Creating new .env file at ${envPath}`);
     }
 
-    const previousKey = config.server.apiKey;
-    config.server.apiKey = apiKey;
+    const lines = content.split("\n");
+    let keyUpdated = false;
 
-    const formatted = `${JSON.stringify(config, null, 2)}\n`;
-    await fs.writeFile(configPath, formatted, "utf8");
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith("MIMIR_SERVER_API_KEY=")) {
+            const match = line.match(/^MIMIR_SERVER_API_KEY=(.*)$/);
+            if (match) {
+                previousKey = match[1];
+            }
+            lines[i] = `MIMIR_SERVER_API_KEY=${apiKey}`;
+            keyUpdated = true;
+            break;
+        }
+    }
 
-    console.log(`Updated server.apiKey in ${configPath}.`);
-    if (typeof previousKey === "string") {
+    if (!keyUpdated) {
+        // Add the key if it doesn't exist
+        if (content && !content.endsWith("\n")) {
+            lines.push("");
+        }
+        lines.push(`MIMIR_SERVER_API_KEY=${apiKey}`);
+    }
+
+    const updatedContent = lines.join("\n");
+    await fs.writeFile(envPath, updatedContent, "utf8");
+
+    console.log(`Updated MIMIR_SERVER_API_KEY in ${envPath}.`);
+    if (previousKey) {
         console.log("Previous key has been overwritten.");
     }
     console.log(`New API key: ${apiKey}`);
@@ -87,7 +115,7 @@ async function main(): Promise<void> {
     const options = parseArgs(process.argv.slice(2));
     const resolvedPath = resolveConfigPath(options.configPath);
     const apiKey = generateApiKey(options.byteLength);
-    await updateConfig(resolvedPath, apiKey);
+    await updateEnvFile(resolvedPath, apiKey);
 }
 
 main().catch((error) => {

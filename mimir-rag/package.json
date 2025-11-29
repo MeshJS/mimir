@@ -20,8 +20,14 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.50",
+    "@ai-sdk/google": "^2.0.44",
+    "@ai-sdk/mistral": "^2.0.25",
+    "@ai-sdk/openai": "^2.0.74",
     "@supabase/supabase-js": "^2.81.0",
+    "ai": "^5.0.104",
     "bottleneck": "^2.19.5",
+    "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "github-slugger": "^2.0.0",
     "p-limit": "^7.2.0",

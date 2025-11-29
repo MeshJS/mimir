@@ -134,7 +134,9 @@ export abstract class BaseChatProvider implements ChatProvider {
         }
     }
 
-    async generateAnswer(options: GenerateAnswerOptions): Promise<string> {
+    async generateAnswer(options: GenerateAnswerOptions & { stream?: false }): Promise<string>;
+    async generateAnswer(options: GenerateAnswerOptions & { stream: true }): Promise<AsyncIterable<string>>;
+    async generateAnswer(options: GenerateAnswerOptions): Promise<string | AsyncIterable<string>> {
         const tokens = this.estimateChatTokens(options);
         return this.scheduleWithRateLimits(tokens, () => this.complete(options), {
             logPrefix: `${this.config.provider}:chat`,
@@ -186,7 +188,7 @@ export abstract class BaseChatProvider implements ChatProvider {
         return tokens;
     }
 
-    protected abstract complete(options: GenerateAnswerOptions): Promise<string>;
+    protected abstract complete(options: GenerateAnswerOptions): Promise<string | AsyncIterable<string>>;
 
     private async scheduleWithRateLimits<T>(tokens: number, task: () => Promise<T>, { logPrefix, signal }: ScheduleOptions): Promise<T> {
         await this.reserveTokens(tokens);
