@@ -13,7 +13,7 @@ export interface AskAiOptions {
     bm25MatchCount?: number;
     enableHybridSearch?: boolean;
     systemPrompt?: string;
-    onToken?: (chunk: string) => void;
+    stream?: boolean;
     signal?: AbortSignal;
 }
 
@@ -30,6 +30,11 @@ export interface AskAiResult {
     sources: AskAiSource[];
 }
 
+export interface AskAiStreamResult {
+    stream: AsyncIterable<string>;
+    sources: AskAiSource[];
+}
+
 interface AskAiContextOptions {
     logger?: Logger;
     config?: AppConfig;
@@ -38,9 +43,21 @@ interface AskAiContextOptions {
 export async function askAi(
     llm: LLMClientBundle,
     store: SupabaseVectorStore,
+    options: AskAiOptions & { stream?: false },
+    context?: AskAiContextOptions
+): Promise<AskAiResult>;
+export async function askAi(
+    llm: LLMClientBundle,
+    store: SupabaseVectorStore,
+    options: AskAiOptions & { stream: true },
+    context?: AskAiContextOptions
+): Promise<AskAiStreamResult>;
+export async function askAi(
+    llm: LLMClientBundle,
+    store: SupabaseVectorStore,
     options: AskAiOptions,
     context?: AskAiContextOptions
-): Promise<AskAiResult> {
+): Promise<AskAiResult | AskAiStreamResult> {
     const activeLogger = context?.logger ?? getLogger();
     const trimmedQuestion = options.question.trim();
     const supabaseConfig = context?.config?.supabase;
@@ -91,9 +108,8 @@ export async function askAi(
 
     activeLogger.info({ matchCount: matches.length }, "Generating answer with retrieved context.");
 
-    let answer: string;
-    if (options.onToken) {
-        // Streaming mode
+    if (options.stream) {
+        // Streaming mode - return stream directly
         const stream = await llm.chat.generateAnswer({
             prompt: trimmedQuestion,
             context: matches,
@@ -102,22 +118,26 @@ export async function askAi(
             signal: options.signal,
         });
 
-        let fullText = "";
-        for await (const chunk of stream) {
-            fullText += chunk;
-            options.onToken(chunk);
-        }
-        answer = fullText.trim();
-    } else {
-        // Non-streaming mode
-        answer = await llm.chat.generateAnswer({
-            prompt: trimmedQuestion,
-            context: matches,
-            systemPrompt: options.systemPrompt,
-            stream: false,
-            signal: options.signal,
-        });
+        // Generate sources immediately (they don't depend on the answer content for streaming)
+        const sources = dedupeMatches(matches).map((match) => ({
+            filepath: match.filepath,
+            chunkTitle: sanitizeSourceTitle(match.chunkTitle, match.filepath),
+            githubUrl: match.githubUrl ?? undefined,
+            docsUrl: match.docsUrl ?? undefined,
+            finalUrl: match.finalUrl ?? match.githubUrl ?? match.docsUrl ?? match.filepath,
+        }));
+
+        return { stream, sources };
     }
+
+    // Non-streaming mode
+    const answer = await llm.chat.generateAnswer({
+        prompt: trimmedQuestion,
+        context: matches,
+        systemPrompt: options.systemPrompt,
+        stream: false,
+        signal: options.signal,
+    });
 
     const citedIndexes = extractUsedSourceIndexes(answer);
     let citedMatches = selectMatchesByIndexes(matches, citedIndexes);

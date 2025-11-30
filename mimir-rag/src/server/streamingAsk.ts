@@ -68,9 +68,7 @@ export async function streamAskResponse(
                 matchCount: options.matchCount,
                 similarityThreshold: options.similarityThreshold,
                 systemPrompt: options.systemPrompt,
-                onToken: (chunk) => {
-                    pushStreamEvent(res, "token", { text: chunk });
-                },
+                stream: true,
                 signal: abortController.signal,
             },
             {
@@ -79,8 +77,15 @@ export async function streamAskResponse(
             }
         );
 
+        // Consume the stream and send tokens to client
+        let fullAnswer = "";
+        for await (const chunk of response.stream) {
+            fullAnswer += chunk;
+            pushStreamEvent(res, "token", { text: chunk });
+        }
+
         pushStreamEvent(res, "final", {
-            answer: response.answer,
+            answer: fullAnswer.trim(),
             sources: response.sources,
         });
     } catch (error) {
