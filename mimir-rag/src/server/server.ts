@@ -7,11 +7,12 @@ import { createLLMClient } from "../llm/factory";
 import type { LLMClientBundle } from "../llm/types";
 import { createSupabaseStore, type SupabaseVectorStore } from "../supabase/client";
 import { createApiKeyMiddleware } from "./middleware/apiKey";
-import { handleAskRequest } from "./routes/ask";
 import { handleMcpAskRequest } from "./routes/mcpAsk";
+import { handleMcpMatchRequest } from "./routes/mcpMatch";
 import { handleHealthRequest } from "./routes/health";
 import { handleIngestRequest } from "./routes/ingest";
 import { handleGithubWebhookRequest, type RequestWithRawBody } from "./routes/githubWebhook";
+import { handleChatCompletions } from "./routes/chatCompletions";
 
 export interface ServerOptions {
     configPath?: string;
@@ -104,8 +105,8 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
         }, logger);
     });
 
-    app.post("/ask", async (req: any, res: any) => {
-        await handleAskRequest(
+    app.post("/v1/chat/completions", async (req: any, res: any) => {
+        await handleChatCompletions(
             req,
             res,
             {
@@ -123,6 +124,19 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
             res,
             {
                 config: context.config,
+                store: context.store,
+            },
+            logger
+        );
+    });
+
+    app.post("/mcp/match", async (req: any, res: any) => {
+        await handleMcpMatchRequest(
+            req,
+            res,
+            {
+                config: context.config,
+                llm: context.llm,
                 store: context.store,
             },
             logger
