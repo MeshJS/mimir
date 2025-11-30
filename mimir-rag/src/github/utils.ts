@@ -113,3 +113,40 @@ export function buildSourceUrl(owner: string, repo: string, branch: string, file
     const encodedPath = encodeRepoPath(filePath);
     return `https://github.com/${owner}/${repo}/blob/${encodeURIComponent(branch)}/${encodedPath}`;
 }
+
+// Webhook utilities
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+export function getHeaderValue(header: string | string[] | undefined): string | undefined {
+    if (Array.isArray(header)) {
+        return header[0];
+    }
+    return header;
+}
+
+export function verifyGithubWebhookSignature(
+    secret: string,
+    signature: string | undefined,
+    rawBody?: Buffer
+): boolean {
+    if (!secret || !signature || !rawBody) {
+        return false;
+    }
+
+    const hmac = createHmac("sha256", secret);
+    hmac.update(rawBody);
+    const expected = `sha256=${hmac.digest("hex")}`;
+
+    const expectedBuffer = Buffer.from(expected);
+    const signatureBuffer = Buffer.from(signature);
+
+    if (expectedBuffer.length !== signatureBuffer.length) {
+        return false;
+    }
+
+    try {
+        return timingSafeEqual(expectedBuffer, signatureBuffer);
+    } catch {
+        return false;
+    }
+}

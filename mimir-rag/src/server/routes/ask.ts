@@ -1,23 +1,17 @@
+import type { Request, Response } from "express";
 import type { Logger } from "pino";
-import { askAi } from "../query/askAi";
-import type { AppConfig } from "../config/types";
-import type { LLMClientBundle } from "../llm/types";
-import type { SupabaseVectorStore } from "../supabase/client";
+import { askAi } from "../../query/askAi";
+import type { AppConfig } from "../../config/types";
+import type { LLMClientBundle } from "../../llm/types";
+import type { SupabaseVectorStore } from "../../supabase/client";
 
-export interface StreamAskOptions {
-    question: string;
-    matchCount?: number;
-    similarityThreshold?: number;
-    systemPrompt?: string;
-}
-
-export interface StreamAskContext {
+export interface AskRouteContext {
     config: AppConfig;
     llm: LLMClientBundle;
     store: SupabaseVectorStore;
 }
 
-export function isStreamingRequest(req: any): boolean {
+function isStreamingRequest(req: Request): boolean {
     const acceptHeader = typeof req?.headers?.accept === "string" ? req.headers.accept.toLowerCase() : "";
     if (acceptHeader.includes("text/event-stream")) {
         return true;
@@ -39,12 +33,35 @@ export function isStreamingRequest(req: any): boolean {
     return normalize(req?.query?.stream) || normalize(req?.body?.stream);
 }
 
-export async function streamAskResponse(
-    req: any,
-    res: any,
-    context: StreamAskContext,
+function initializeEventStream(res: Response): void {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    if (typeof res.flushHeaders === "function") {
+        res.flushHeaders();
+    }
+}
+
+function pushStreamEvent(res: Response, event: string, payload: unknown): void {
+    if (res.writableEnded) {
+        return;
+    }
+
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+async function handleStreamingAsk(
+    req: Request,
+    res: Response,
+    context: AskRouteContext,
     logger: Logger,
-    options: StreamAskOptions
+    options: {
+        question: string;
+        matchCount?: number;
+        similarityThreshold?: number;
+        systemPrompt?: string;
+    }
 ): Promise<void> {
     initializeEventStream(res);
     const abortController = new AbortController();
@@ -104,20 +121,55 @@ export async function streamAskResponse(
     }
 }
 
-function initializeEventStream(res: any): void {
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("Connection", "keep-alive");
-    if (typeof res.flushHeaders === "function") {
-        res.flushHeaders();
-    }
-}
+export async function handleAskRequest(
+    req: Request,
+    res: Response,
+    context: AskRouteContext,
+    logger: Logger
+): Promise<void> {
+    const { question, matchCount, similarityThreshold, systemPrompt } = req.body ?? {};
 
-function pushStreamEvent(res: any, event: string, payload: unknown): void {
-    if (res.writableEnded) {
+    if (typeof question !== "string" || question.trim().length === 0) {
+        res.status(400).json({
+            status: "error",
+            message: "Request body must include a non-empty 'question' field.",
+        });
         return;
     }
 
-    res.write(`event: ${event}\n`);
-    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    if (isStreamingRequest(req)) {
+        await handleStreamingAsk(req, res, context, logger, {
+            question,
+            matchCount,
+            similarityThreshold,
+            systemPrompt,
+        });
+        return;
+    }
+
+    try {
+        const response = await askAi(
+            context.llm,
+            context.store,
+            {
+                question,
+                matchCount,
+                similarityThreshold,
+                systemPrompt,
+            },
+            {
+                logger,
+                config: context.config,
+            }
+        );
+
+        res.json({
+            status: "ok",
+            answer: response.answer,
+            sources: response.sources,
+        });
+    } catch (error) {
+        logger.error({ err: error }, "Ask endpoint failed.");
+        res.status(500).json({ status: "error", message: (error as Error).message });
+    }
 }
