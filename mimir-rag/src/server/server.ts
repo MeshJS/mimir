@@ -1,29 +1,20 @@
 import type { Server } from "node:http";
 import express from "express";
-import type { AppConfig } from "../config/types";
 import { loadAppConfig, resolveConfigPath } from "../config/loadConfig";
 import { configureLogger, getLogger } from "../utils/logger";
 import { createLLMClient } from "../llm/factory";
-import type { LLMClientBundle } from "../llm/types";
-import { createSupabaseStore, type SupabaseVectorStore } from "../supabase/client";
+import { createSupabaseStore } from "../supabase/client";
 import { createApiKeyMiddleware } from "./middleware/apiKey";
-import { handleMcpAskRequest } from "./routes/mcpAsk";
-import { handleMcpMatchRequest } from "./routes/mcpMatch";
-import { handleHealthRequest } from "./routes/health";
-import { handleIngestRequest } from "./routes/ingest";
-import { handleGithubWebhookRequest, type RequestWithRawBody } from "./routes/githubWebhook";
-import { handleChatCompletions } from "./routes/chatCompletions";
+import { type RequestWithRawBody } from "./routes/githubWebhook";
+import { createApiRouter } from "./routers/api";
+import { createMcpRouter } from "./routers/mcp";
+import { createWebhookRouter } from "./routers/webhook";
+import { applyCors } from "./utils/cors";
+import { type ServerContext, createRouterContext } from "./utils/context";
 
 export interface ServerOptions {
     configPath?: string;
     port?: number;
-}
-
-interface ServerContext {
-    config: AppConfig;
-    llm: LLMClientBundle;
-    store: SupabaseVectorStore;
-    ingestionBusy: boolean;
 }
 
 type ExpressApp = ReturnType<typeof express>;
@@ -54,17 +45,6 @@ async function createContext(configPath?: string): Promise<ServerContext> {
     };
 }
 
-function applyCors(req: any, res: any, next: any): void {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    if (req.method === "OPTIONS") {
-        res.sendStatus(204);
-        return;
-    }
-    next();
-}
-
 export async function createServer(options: ServerOptions = {}): Promise<{ app: ExpressApp; context: ServerContext }> {
     const context = await createContext(options.configPath);
     const logger = getLogger();
@@ -79,82 +59,27 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
     );
     app.use(applyCors);
 
-    // Apply API key middleware to all routes except /mcp/* endpoints
+    // Apply API key middleware to all routes except /mcp/* and /webhook/* endpoints
     const apiKeyMiddleware = createApiKeyMiddleware(context.config.server.apiKey);
     app.use((req: any, res: any, next: any) => {
-        if (req.path.startsWith('/mcp/')) {
+        if (req.path.startsWith('/mcp/') || req.path.startsWith('/webhook/')) {
             next();
         } else {
             apiKeyMiddleware(req, res, next);
         }
     });
 
-    app.get("/health", (req: any, res: any) => {
-        handleHealthRequest(req, res, { ingestionBusy: context.ingestionBusy });
-    });
+    // Prepare router context
+    const routerContext = createRouterContext(context);
 
-    app.post("/ingest", async (req: any, res: any) => {
-        await handleIngestRequest(req, res, {
-            config: context.config,
-            llm: context.llm,
-            store: context.store,
-            ingestionBusy: context.ingestionBusy,
-            setIngestionBusy: (busy: boolean) => {
-                context.ingestionBusy = busy;
-            },
-        }, logger);
-    });
+    // API routes (require API key)
+    app.use(createApiRouter(routerContext, logger));
 
-    app.post("/v1/chat/completions", async (req: any, res: any) => {
-        await handleChatCompletions(
-            req,
-            res,
-            {
-                config: context.config,
-                llm: context.llm,
-                store: context.store,
-            },
-            logger
-        );
-    });
+    // MCP routes (no API key required)
+    app.use('/mcp', createMcpRouter(routerContext, logger));
 
-    app.post("/mcp/ask", async (req: any, res: any) => {
-        await handleMcpAskRequest(
-            req,
-            res,
-            {
-                config: context.config,
-                store: context.store,
-            },
-            logger
-        );
-    });
-
-    app.post("/mcp/match", async (req: any, res: any) => {
-        await handleMcpMatchRequest(
-            req,
-            res,
-            {
-                config: context.config,
-                llm: context.llm,
-                store: context.store,
-            },
-            logger
-        );
-    });
-
-    app.post("/webhook/github", async (req: RequestWithRawBody, res: any) => {
-        await handleGithubWebhookRequest(req, res, {
-            config: context.config,
-            llm: context.llm,
-            store: context.store,
-            ingestionBusy: context.ingestionBusy,
-            setIngestionBusy: (busy: boolean) => {
-                context.ingestionBusy = busy;
-            },
-            githubWebhookSecret: context.config.server.githubWebhookSecret,
-        }, logger);
-    });
+    // Webhook routes (no API key required)
+    app.use('/webhook', createWebhookRouter(routerContext, logger));
 
     return { app, context };
 }
