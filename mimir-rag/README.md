@@ -95,38 +95,7 @@ OpenAI-compatible chat completion response format with retrieved documentation c
 
 ### POST /mcp/ask
 
-Query your documentation via MCP (Model Context Protocol) without server API key authentication. This endpoint allows MCP clients to provide their own LLM credentials dynamically.
-
-**Headers:**
-- `Content-Type: application/json`
-
-**Request body:**
-```json
-{
-  "question": "How do I implement authentication?",
-  "provider": "anthropic",
-  "model": "claude-3-5-sonnet-20241022",
-  "apiKey": "your-llm-api-key",
-  "matchCount": 10,
-  "similarityThreshold": 0.2,
-  "systemPrompt": "You are a helpful coding assistant"
-}
-```
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "answer": "Based on the documentation...",
-  "sources": [...]
-}
-```
-
-**Note:** The `/mcp/ask` endpoint bypasses the `MIMIR_SERVER_API_KEY` authentication and allows clients to specify their own LLM provider, model, and API key. This is designed for use with the [mimir-mcp](../mimir-mcp) MCP server.
-
-### POST /mcp/match
-
-Semantic search endpoint that returns matching documentation chunks without generating an AI response. No authentication required.
+Semantic search endpoint via MCP (Model Context Protocol) that returns matching documentation chunks with content. No authentication required. Designed for use with the [mimir-mcp](../mimir-mcp) MCP server.
 
 **Headers:**
 - `Content-Type: application/json`
@@ -144,17 +113,20 @@ Semantic search endpoint that returns matching documentation chunks without gene
 ```json
 {
   "status": "ok",
+  "count": 2,
   "matches": [
     {
-      "title": "Authentication Guide",
-      "url": "https://example.com/docs/auth",
-      "similarity": 0.85
+      "chunkTitle": "Authentication Guide - Getting Started",
+      "chunkContent": "To implement authentication in your application...",
+      "similarity": 0.85,
+      "githubUrl": "https://github.com/user/repo/blob/main/docs/auth.md#L10-L25",
+      "docsUrl": "https://docs.example.com/auth"
     }
   ]
 }
 ```
 
-**Note:** This endpoint is faster than `/mcp/ask` since it only performs semantic search without LLM inference. Useful for discovering relevant documentation.
+**Note:** This endpoint performs semantic search using OpenAI embeddings and returns document chunks with their full content. The calling AI assistant can then synthesize answers from the retrieved content, avoiding additional LLM API calls on the server side.
 
 ### POST /ingest
 

@@ -13,9 +13,10 @@ The core RAG server that handles documentation ingestion and querying.
 **Features:**
 - Ingests documentation from GitHub repositories into Supabase vector store
 - Supports multiple LLM providers (OpenAI, Anthropic, Google, Mistral)
-- REST API with multiple endpoints (`/ask`, `/ingest`, `/mcp/ask`, `/webhook/github`)
+- OpenAI-compatible chat completions endpoint (`/v1/chat/completions`)
+- MCP endpoint for semantic document search (`/mcp/ask`)
 - GitHub webhook integration for automatic re-ingestion
-- Streaming responses support
+- Streaming responses support (OpenAI-compatible and custom SSE)
 - Configurable chunking and embedding strategies
 
 **Quick Start:**
@@ -36,21 +37,30 @@ MCP server that connects AI assistants (Claude Code, Cline, Claude Desktop) to t
 
 **Features:**
 - Exposes `askDocs` tool for AI assistants via MCP protocol
-- No server API key required (bypasses mimir-rag authentication)
-- Dynamic LLM configuration per client
+- No configuration required - just install and use
+- Fast semantic search without additional LLM calls
 - Easy integration with VS Code and Claude Desktop
 
 **Quick Start:**
+
+For production (via npm):
+```json
+{
+  "mcpServers": {
+    "mimir": {
+      "command": "npx",
+      "args": ["-y", "@your-org/mimir-mcp"]
+    }
+  }
+}
+```
+
+For local development:
 ```bash
 cd mimir-mcp
 npm install
 npm run build
 ```
-
-Then configure in VS Code:
-1. Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`)
-2. Search for **"MCP: Open User Configuration"**
-3. Add the mimir MCP server configuration
 
 See the [mimir-mcp README](./mimir-mcp/README.md) for detailed setup instructions.
 
@@ -95,13 +105,14 @@ See the [mimir-mcp README](./mimir-mcp/README.md) for detailed setup instruction
    - AI assistant invokes the `askDocs` tool from mimir-mcp
    - mimir-mcp sends request to mimir-rag's `/mcp/ask` endpoint
    - mimir-rag retrieves relevant document chunks using vector similarity
-   - mimir-rag generates answer using the provided LLM
-   - Answer is returned to the AI assistant
+   - Document chunks with content and metadata are returned to the AI assistant
+   - AI assistant synthesizes an answer from the retrieved content
 
 3. **Query Phase (via REST API):**
-   - Direct HTTP POST to `/ask` endpoint with API key authentication
-   - Same retrieval and generation process as MCP
-   - Returns JSON response with answer and sources
+   - Direct HTTP POST to `/v1/chat/completions` endpoint (OpenAI-compatible)
+   - Supports streaming and non-streaming responses
+   - Works with Vercel AI SDK and other OpenAI-compatible clients
+   - Returns OpenAI-formatted responses with answers and sources
 
 ## Use Cases
 
@@ -162,17 +173,22 @@ Both projects are configured via environment variables. See individual README fi
 
 ### mimir-rag Endpoints
 
-- **POST /ask** - Query documentation (requires API key)
-- **POST /mcp/ask** - Query documentation via MCP (no API key required)
-- **POST /ingest** - Trigger manual ingestion (requires API key)
-- **POST /webhook/github** - GitHub webhook for auto-ingestion
+**Public Endpoints (require API key):**
+- **POST /v1/chat/completions** - OpenAI-compatible chat completions (streaming & non-streaming)
+- **POST /ingest** - Trigger manual ingestion
 - **GET /health** - Health check
+
+**MCP Endpoints (no API key required):**
+- **POST /mcp/ask** - Semantic search returning document chunks with content and metadata
+
+**Webhook Endpoints:**
+- **POST /webhook/github** - GitHub webhook for auto-ingestion
 
 See [mimir-rag API documentation](./mimir-rag/README.md#api-endpoints) for detailed endpoint specifications.
 
 ### mimir-mcp Tools
 
-- **askDocs** - Query documentation from AI assistants
+- **askDocs** - Semantic search for documentation from AI assistants
 
 See [mimir-mcp usage](./mimir-mcp/README.md#using-the-askdocs-tool) for details.
 

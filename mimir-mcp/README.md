@@ -1,21 +1,51 @@
 # mimir-mcp
 
-MCP (Model Context Protocol) server that connects your AI coding assistant to the Mimir documentation RAG system. This allows AI assistants like Claude Code, VS Code extensions, or other MCP clients to query your ingested documentation directly.
+MCP (Model Context Protocol) server that connects your AI coding assistant to the Mimir documentation RAG system. This allows AI assistants like Claude Code, VS Code extensions, or other MCP clients to semantically search your ingested documentation.
 
 ## What is MCP?
 
-[Model Context Protocol](https://modelcontextprotocol.io/) is an open protocol that enables AI assistants to securely access external data sources and tools. This MCP server exposes your Mimir documentation as a tool that AI assistants can use to answer questions based on your ingested docs.
+[Model Context Protocol](https://modelcontextprotocol.io/) is an open protocol that enables AI assistants to securely access external data sources and tools. This MCP server exposes your Mimir documentation as a semantic search tool that AI assistants can use to find relevant documentation chunks.
 
 ## Features
 
-- **Documentation Query Tool**: Provides an `askDocs` tool that AI assistants can invoke
-- **Dynamic LLM Configuration**: Each MCP client can use its own LLM provider and API key
-- **No Server API Key Required**: Bypasses mimir-rag's `MIMIR_SERVER_API_KEY` authentication
-- **Configurable Parameters**: Supports custom match count, similarity threshold, and system prompts
+- **Documentation Search Tool**: Provides an `askDocs` tool that AI assistants can invoke
+- **Zero Configuration**: No API keys or environment variables needed - just install via npm
+- **No Authentication Required**: Bypasses mimir-rag's `MIMIR_SERVER_API_KEY` authentication
+- **Fast and Cost-Effective**: Skips additional LLM calls - returns document chunks directly
+- **Configurable Parameters**: Supports custom match count and similarity threshold
 
 ## Installation
 
-1. Navigate to the `mimir-mcp` directory:
+### Option 1: Install from npm (Recommended)
+
+Once published to npm, users can install and use the MCP server without any local setup:
+
+1. Open VS Code Command Palette (`Cmd+Shift+P` on macOS or `Ctrl+Shift+P` on Windows/Linux)
+2. Search for and select **"MCP: Open User Configuration"**
+3. Add the following configuration:
+
+```json
+{
+  "mcpServers": {
+    "mimir": {
+      "command": "npx",
+      "args": ["-y", "@your-org/mimir-mcp"]
+    }
+  }
+}
+```
+
+**Note**: Replace `@your-org/mimir-mcp` with the actual npm package name once published.
+
+4. Restart VS Code or reload the MCP extension
+
+The MCP server is pre-configured to use the production backend URL - no additional configuration needed!
+
+### Option 2: Local Development
+
+For local development and testing:
+
+1. Clone the repository and navigate to the `mimir-mcp` directory:
    ```bash
    cd mimir-mcp
    ```
@@ -25,113 +55,95 @@ MCP (Model Context Protocol) server that connects your AI coding assistant to th
    npm install
    ```
 
-3. Build the project:
+3. Modify `MIMIR_API_URL` in `src/index.ts` to point to your local backend:
+   ```typescript
+   const MIMIR_API_URL = "http://localhost:3000";
+   ```
+
+4. Build the project:
    ```bash
    npm run build
    ```
 
-## Configuration for VS Code (Claude Code, Cline, etc.)
+5. Configure in VS Code:
+   ```json
+   {
+     "mcpServers": {
+       "mimir": {
+         "command": "node",
+         "args": ["/absolute/path/to/mimir/mimir-mcp/dist/index.js"]
+       }
+     }
+   }
+   ```
 
-### Step 1: Build the MCP Server
-
-Make sure you've built the project:
-
-```bash
-npm run build
-```
-
-### Step 2: Configure MCP in VS Code
-
-1. Open VS Code Command Palette (`Cmd+Shift+P` on macOS or `Ctrl+Shift+P` on Windows/Linux)
-2. Search for and select **"MCP: Open User Configuration"**
-3. Add the following configuration to the JSON file that opens:
-
-```json
-{
-  "mcpServers": {
-    "mimir": {
-      "command": "node",
-      "args": ["/absolute/path/to/mimir/mimir-mcp/dist/index.js"],
-      "env": {
-        "MIMIR_API_URL": "http://localhost:3000",
-        "MIMIR_PROVIDER": "anthropic",
-        "MIMIR_MODEL": "claude-3-5-sonnet-20241022",
-        "MIMIR_API_KEY": "your-api-key-here"
-      }
-    }
-  }
-}
-```
-
-**Important**: Replace `/absolute/path/to/mimir` with the actual absolute path to your mimir project directory.
-
-### Step 3: Restart VS Code or Reload the MCP Extension
-
-After saving the configuration, restart VS Code or reload the MCP extension to apply the changes.
-
-### Configuration Parameters
-
-The `env` object accepts the following parameters:
-
-- **MIMIR_API_URL** (optional): URL of your mimir-rag server. Default: `http://localhost:3000`
-- **MIMIR_PROVIDER** (required): LLM provider name (`openai`, `anthropic`, `google`, `mistral`)
-- **MIMIR_MODEL** (required): Model identifier (e.g., `claude-3-5-sonnet-20241022`, `gpt-4`, etc.)
-- **MIMIR_API_KEY** (required): API key for your chosen LLM provider
+6. Restart VS Code or reload the MCP extension
 
 ## Configuration for Claude Desktop
-
-To use this MCP server with Claude Desktop, add it to your Claude Desktop configuration file:
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
+### Option 1: Using npm package (Recommended)
+
 ```json
 {
   "mcpServers": {
     "mimir": {
-      "command": "node",
-      "args": ["/absolute/path/to/mimir/mimir-mcp/dist/index.js"],
-      "env": {
-        "MIMIR_API_URL": "http://localhost:3000",
-        "MIMIR_PROVIDER": "anthropic",
-        "MIMIR_MODEL": "claude-3-5-sonnet-20241022",
-        "MIMIR_API_KEY": "your-api-key-here"
-      }
+      "command": "npx",
+      "args": ["-y", "@your-org/mimir-mcp"]
     }
   }
 }
 ```
 
+**Note**: Replace `@your-org/mimir-mcp` with the actual npm package name once published.
+
+### Option 2: Local development
+
+```json
+{
+  "mcpServers": {
+    "mimir": {
+      "command": "node",
+      "args": ["/absolute/path/to/mimir/mimir-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+**Note**: For local development, remember to modify `MIMIR_API_URL` in `src/index.ts` to `http://localhost:3000`.
+
 ## Using the askDocs Tool
 
 Once configured, the AI assistant will have access to an `askDocs` tool. You can ask questions like:
 
-- "Use askDocs to find out how to implement authentication"
-- "Check the docs for API endpoint examples"
+- "Find documentation about authentication implementation"
+- "Search the docs for API endpoint examples"
 - "What does the documentation say about error handling?"
+
+The AI assistant will automatically invoke `askDocs`, retrieve relevant documentation chunks, and synthesize an answer for you.
 
 The tool accepts these parameters:
 
-- **question** (required): Your documentation question
+- **question** (required): Your documentation search query
 - **matchCount** (optional): Number of document chunks to retrieve (default: 10)
 - **similarityThreshold** (optional): Minimum similarity score (default: 0.2)
-- **systemPrompt** (optional): Custom system prompt to guide the AI's response
 
 ## How It Works
 
 1. The MCP server registers an `askDocs` tool with the AI assistant
-2. When invoked, it sends a request to the mimir-rag server's `/mcp/ask` endpoint
-3. The request includes the question and your configured LLM credentials
-4. mimir-rag retrieves relevant documentation chunks and generates an answer using your LLM
-5. The answer is returned to the AI assistant, which can use it to help you
+2. When invoked, it sends a request to the mimir-rag backend's `/mcp/ask` endpoint
+3. mimir-rag performs semantic search using OpenAI embeddings
+4. Relevant documentation chunks with content and metadata are returned
+5. The AI assistant synthesizes an answer based on the retrieved content
 
 ## Prerequisites
 
-- A running [mimir-rag](../mimir-rag) server with ingested documentation
+- A hosted [mimir-rag](../mimir-rag) backend with ingested documentation (or running locally for testing)
 - Node.js 20 or later
 - An AI assistant that supports MCP (Claude Code, Cline, Claude Desktop, etc.)
-- API key for your chosen LLM provider
 
 ## Troubleshooting
 
@@ -139,9 +151,10 @@ The tool accepts these parameters:
 
 If the MCP server can't connect to mimir-rag:
 
-1. Verify your mimir-rag server is running: `curl http://localhost:3000/health`
-2. Check the `MIMIR_API_URL` in your MCP configuration
+1. Verify the mimir-rag backend is accessible: `curl https://your-backend.com/health`
+2. For local development, ensure you've modified `MIMIR_API_URL` in `src/index.ts` to `http://localhost:3000`
 3. Ensure there are no firewall or network issues
+4. For local testing, verify the backend is running on the correct port
 
 ### AI Assistant Not Seeing the Tool
 
@@ -151,11 +164,11 @@ If the MCP server can't connect to mimir-rag:
 4. Open Command Palette and verify MCP configuration was saved correctly
 5. Check the AI assistant's MCP logs for errors
 
-### API Key Issues
+### Empty Results
 
-1. Verify your `MIMIR_API_KEY` is valid for the specified provider
-2. Check you have sufficient quota/credits with your LLM provider
-3. Ensure the `MIMIR_PROVIDER` and `MIMIR_MODEL` match your API key
+1. Verify your mimir-rag server has ingested documentation
+2. Check the embeddings were created successfully during ingestion
+3. Try lowering the `similarityThreshold` parameter for broader matches
 
 ## Development
 
@@ -172,13 +185,11 @@ The build process uses `tsup` to compile TypeScript to ESM format.
 While this is primarily designed as an MCP server, you can also run it standalone for testing:
 
 ```bash
-# Set environment variables
-export MIMIR_API_URL=http://localhost:3000
-export MIMIR_PROVIDER=anthropic
-export MIMIR_MODEL=claude-3-5-sonnet-20241022
-export MIMIR_API_KEY=your-api-key-here
+# For local testing, first modify MIMIR_API_URL in src/index.ts to:
+# const MIMIR_API_URL = "http://localhost:3000";
 
-# Run the server
+# Then rebuild and run
+npm run build
 node dist/index.js
 ```
 
