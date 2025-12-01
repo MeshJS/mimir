@@ -1,30 +1,13 @@
 import { Logger } from "pino";
-import { BaseChatProvider, BaseEmbeddingProvider, type ProviderRateLimits } from "../base";
-import type { ChatModelConfig, EmbeddingModelConfig, ProviderLimitsConfig } from "../../config/types";
-import type { EmbedOptions, GenerateAnswerOptions } from "../types";
-import { buildPromptMessages } from "../prompt";
+import { BaseChatProvider, BaseEmbeddingProvider } from "../base";
+import type { ChatModelConfig, EmbeddingModelConfig } from "../../config/types";
+import type { EmbedOptions, GenerateAnswerOptions, StructuredAnswerResult } from "../types";
+import { buildPromptMessages, answerWithSourcesSchema } from "../prompt";
 import { createOpenAI } from '@ai-sdk/openai';
-import { embedMany, generateText, streamText } from 'ai';
+import { embedMany, generateObject, streamObject } from 'ai';
+import { resolveBaseUrl, mergeLimits } from "../../utils/providerUtils";
 
 const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1/";
-
-function resolveBaseUrl(url?: string): string {
-    if (!url) {
-        return OPENAI_DEFAULT_BASE_URL;
-    }
-    return url.endsWith("/") ? url : `${url}/`;
-}
-
-function mergeLimits(defaults: ProviderRateLimits, override?: ProviderLimitsConfig): ProviderRateLimits {
-    if (!override) {
-        return defaults;
-    }
-
-    return {
-        ...defaults,
-        ...override,
-    };
-}
 
 export class OpenAIEmbeddingProvider extends BaseEmbeddingProvider {
     private readonly sdk: ReturnType<typeof createOpenAI>;
@@ -51,7 +34,7 @@ export class OpenAIEmbeddingProvider extends BaseEmbeddingProvider {
 
         this.sdk = createOpenAI({
             apiKey: config.apiKey,
-            baseURL: resolveBaseUrl(config.baseUrl),
+            baseURL: resolveBaseUrl(config.baseUrl, OPENAI_DEFAULT_BASE_URL),
         });
     }
 
@@ -91,11 +74,11 @@ export class OpenAIChatProvider extends BaseChatProvider {
 
         this.sdk = createOpenAI({
             apiKey: config.apiKey,
-            baseURL: resolveBaseUrl(config.baseUrl),
+            baseURL: resolveBaseUrl(config.baseUrl, OPENAI_DEFAULT_BASE_URL),
         });
     }
 
-    protected async complete(options: GenerateAnswerOptions): Promise<string | AsyncIterable<string>> {
+    protected async complete(options: GenerateAnswerOptions): Promise<StructuredAnswerResult | AsyncIterable<StructuredAnswerResult>> {
         const { system, user } = buildPromptMessages(options);
         const model = this.sdk(this.config.model);
 
@@ -109,11 +92,17 @@ export class OpenAIChatProvider extends BaseChatProvider {
         };
 
         if (options.stream) {
-            const { textStream } = await streamText(baseOptions);
-            return textStream;
+            const { partialObjectStream } = streamObject({
+                ...baseOptions,
+                schema: answerWithSourcesSchema,
+            });
+            return partialObjectStream as AsyncIterable<StructuredAnswerResult>;
         }
 
-        const { text } = await generateText(baseOptions);
-        return text.trim();
+        const { object } = await generateObject({
+            ...baseOptions,
+            schema: answerWithSourcesSchema,
+        });
+        return object as StructuredAnswerResult;
     }
 }

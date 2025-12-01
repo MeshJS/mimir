@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import type { Logger } from "pino";
+import { createUIMessageStream, pipeUIMessageStreamToResponse } from "ai";
 import { askAi } from "../../query/askAi";
 import type { AppConfig } from "../../config/types";
 import type { LLMClientBundle } from "../../llm/types";
@@ -13,7 +14,8 @@ export interface ChatCompletionsContext {
 
 interface OpenAIMessage {
     role: "system" | "user" | "assistant";
-    content: string;
+    content?: string;
+    parts?: Array<{ type: string; text?: string }>;
 }
 
 interface OpenAIChatRequest {
@@ -27,22 +29,32 @@ interface OpenAIChatRequest {
     similarityThreshold?: number;
 }
 
+// Helper to extract text content from a message (supports both OpenAI and AI SDK formats)
+function getMessageContent(message: OpenAIMessage): string {
+    if (message.parts) {
+        return message.parts
+            .filter((part) => part.type === "text" && part.text)
+            .map((part) => part.text)
+            .join("");
+    }
+    return message.content || "";
+}
+
 function extractQuestionAndSystem(messages: OpenAIMessage[]): {
     question: string;
     systemPrompt?: string;
 } {
-    // Find the last user message as the question
     const userMessages = messages.filter((m) => m.role === "user");
-    const question = userMessages[userMessages.length - 1]?.content || "";
+    const lastUserMessage = userMessages[userMessages.length - 1];
+    const question = lastUserMessage ? getMessageContent(lastUserMessage) : "";
 
-    // Find system message if exists
     const systemMessage = messages.find((m) => m.role === "system");
-    const systemPrompt = systemMessage?.content;
+    const systemPrompt = systemMessage ? getMessageContent(systemMessage) : undefined;
 
     return { question, systemPrompt };
 }
 
-function createOpenAIResponse(content: string, model: string = "mimir-rag") {
+function createOpenAIResponse(content: string, sources: any[], model: string = "mimir-rag") {
     return {
         id: `chatcmpl-${Date.now()}`,
         object: "chat.completion",
@@ -66,38 +78,6 @@ function createOpenAIResponse(content: string, model: string = "mimir-rag") {
     };
 }
 
-function initializeStreamingResponse(res: Response): void {
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
-    if (typeof res.flushHeaders === "function") {
-        res.flushHeaders();
-    }
-}
-
-function writeStreamChunk(res: Response, delta: string, model: string, isFirst: boolean = false): void {
-    if (res.writableEnded) {
-        return;
-    }
-
-    const chunk = {
-        id: `chatcmpl-${Date.now()}`,
-        object: "chat.completion.chunk",
-        created: Math.floor(Date.now() / 1000),
-        model,
-        choices: [
-            {
-                index: 0,
-                delta: isFirst ? { role: "assistant", content: delta } : { content: delta },
-                finish_reason: null,
-            },
-        ],
-    };
-
-    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-}
-
 export async function handleChatCompletions(
     req: Request,
     res: Response,
@@ -106,7 +86,6 @@ export async function handleChatCompletions(
 ): Promise<void> {
     const body = req.body as OpenAIChatRequest;
 
-    // Validate request
     if (!Array.isArray(body.messages) || body.messages.length === 0) {
         res.status(400).json({
             error: {
@@ -137,14 +116,10 @@ export async function handleChatCompletions(
     const isStreaming = body.stream === true;
 
     if (isStreaming) {
-        // Streaming response
-        initializeStreamingResponse(res);
+        // Streaming response using AI SDK data stream protocol
         const abortController = new AbortController();
 
         const closeHandler = (): void => {
-            if (res.writableEnded) {
-                return;
-            }
             abortController.abort();
         };
 
@@ -168,38 +143,85 @@ export async function handleChatCompletions(
                 }
             );
 
-            let isFirstChunk = true;
-            for await (const chunk of response.stream) {
-                writeStreamChunk(res, chunk, model, isFirstChunk);
-                isFirstChunk = false;
-            }
+            // Create AI SDK UI Message Stream
+            const stream = createUIMessageStream({
+                execute: async ({ writer }) => {
+                    try {
+                        const textId = `text-${Date.now()}`;
+                        let sentSourcesCount = 0;
 
-            // Send final chunk with finish_reason
-            const finalChunk = {
-                id: `chatcmpl-${Date.now()}`,
-                object: "chat.completion.chunk",
-                created: Math.floor(Date.now() / 1000),
-                model,
-                choices: [
-                    {
-                        index: 0,
-                        delta: {},
-                        finish_reason: "stop",
-                    },
-                ],
-            };
-            res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
-            res.write("data: [DONE]\n\n");
+                        writer.write({
+                            type: "text-start",
+                            id: textId,
+                        });
+
+                        for await (const textDelta of response.stream) {
+                            writer.write({
+                                type: "text-delta",
+                                delta: textDelta,
+                                id: textId,
+                            });
+
+                            if (response.sources.length > sentSourcesCount) {
+                                const newSources = response.sources.slice(sentSourcesCount);
+                                for (const source of newSources) {
+                                    writer.write({
+                                        type: "source-url",
+                                        sourceId: source.finalUrl || source.filepath,
+                                        url: source.finalUrl,
+                                        title: source.chunkTitle,
+                                    });
+                                }
+                                sentSourcesCount = response.sources.length;
+                                logger.info({ sourcesCount: newSources.length }, "Sent sources during stream");
+                            }
+                        }
+
+                        writer.write({
+                            type: "text-end",
+                            id: textId,
+                        });
+
+                        if (response.sources.length > sentSourcesCount) {
+                            const remainingSources = response.sources.slice(sentSourcesCount);
+                            for (const source of remainingSources) {
+                                writer.write({
+                                    type: "source-url",
+                                    sourceId: source.finalUrl || source.filepath,
+                                    url: source.finalUrl,
+                                    title: source.chunkTitle,
+                                });
+                            }
+                            logger.info({ sourcesCount: remainingSources.length }, "Sent remaining sources after stream");
+                        }
+                    } catch (error) {
+                        logger.error({ err: error }, "Error in stream execution");
+                        throw error;
+                    }
+                },
+            });
+
+            // Pipe the UI message stream to the response
+            pipeUIMessageStreamToResponse({
+                stream,
+                response: res,
+            });
         } catch (error) {
+            res.off("close", closeHandler);
             if (abortController.signal.aborted) {
                 logger.warn("Streaming chat completions request aborted by client.");
             } else {
                 logger.error({ err: error }, "Streaming chat completions failed.");
-            }
-        } finally {
-            res.off("close", closeHandler);
-            if (!res.writableEnded) {
-                res.end();
+                if (!res.writableEnded) {
+                    res.status(500).json({
+                        error: {
+                            message: (error as Error).message,
+                            type: "internal_server_error",
+                            param: null,
+                            code: null,
+                        },
+                    });
+                }
             }
         }
     } else {
@@ -220,7 +242,7 @@ export async function handleChatCompletions(
                 }
             );
 
-            res.json(createOpenAIResponse(response.answer, model));
+            res.json(createOpenAIResponse(response.answer, response.sources, model));
         } catch (error) {
             logger.error({ err: error }, "Chat completions endpoint failed.");
             res.status(500).json({

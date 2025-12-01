@@ -1,31 +1,13 @@
 import { Logger } from "pino";
-import { BaseChatProvider, BaseEmbeddingProvider, type ProviderRateLimits } from "../base";
-import type { ChatModelConfig, EmbeddingModelConfig, ProviderLimitsConfig } from "../../config/types";
-import type { EmbedOptions, GenerateAnswerOptions } from "../types";
-import { buildPromptMessages } from "../prompt";
+import { BaseChatProvider, BaseEmbeddingProvider } from "../base";
+import type { ChatModelConfig, EmbeddingModelConfig } from "../../config/types";
+import type { EmbedOptions, GenerateAnswerOptions, StructuredAnswerResult } from "../types";
+import { buildPromptMessages, answerWithSourcesSchema } from "../prompt";
 import { createMistral } from '@ai-sdk/mistral';
-import { embedMany, generateText, streamText } from 'ai';
+import { embedMany, generateObject, streamObject } from 'ai';
+import { resolveBaseUrl, mergeLimits } from "../../utils/providerUtils";
 
 const MISTRAL_DEFAULT_BASE_URL = "https://api.mistral.ai/";
-
-function resolveBaseUrl(url?: string): string {
-    if (!url) {
-        return MISTRAL_DEFAULT_BASE_URL;
-    }
-
-    return url.endsWith("/") ? url : `${url}/`;
-}
-
-function mergeLimits(defaults: ProviderRateLimits, override?: ProviderLimitsConfig): ProviderRateLimits {
-    if (!override) {
-        return defaults;
-    }
-
-    return {
-        ...defaults,
-        ...override,
-    };
-}
 
 export class MistralEmbeddingProvider extends BaseEmbeddingProvider {
     private readonly sdk: ReturnType<typeof createMistral>;
@@ -52,12 +34,12 @@ export class MistralEmbeddingProvider extends BaseEmbeddingProvider {
 
         this.sdk = createMistral({
             apiKey: config.apiKey,
-            baseURL: resolveBaseUrl(config.baseUrl),
+            baseURL: resolveBaseUrl(config.baseUrl, MISTRAL_DEFAULT_BASE_URL),
         });
     }
 
     protected async sendEmbeddingRequest(chunks: string[], options?: EmbedOptions): Promise<number[][]> {
-        const model = this.sdk.embedding(this.config.model);
+        const model = this.sdk.textEmbedding(this.config.model);
         const { embeddings } = await embedMany({
             model,
             values: chunks,
@@ -92,11 +74,11 @@ export class MistralChatProvider extends BaseChatProvider {
 
         this.sdk = createMistral({
             apiKey: config.apiKey,
-            baseURL: resolveBaseUrl(config.baseUrl),
+            baseURL: resolveBaseUrl(config.baseUrl, MISTRAL_DEFAULT_BASE_URL),
         });
     }
 
-    protected async complete(options: GenerateAnswerOptions): Promise<string | AsyncIterable<string>> {
+    protected async complete(options: GenerateAnswerOptions): Promise<StructuredAnswerResult | AsyncIterable<StructuredAnswerResult>> {
         const { system, user } = buildPromptMessages(options);
         const model = this.sdk(this.config.model);
 
@@ -110,11 +92,17 @@ export class MistralChatProvider extends BaseChatProvider {
         };
 
         if (options.stream) {
-            const { textStream } = await streamText(baseOptions);
-            return textStream;
+            const { partialObjectStream } = streamObject({
+                ...baseOptions,
+                schema: answerWithSourcesSchema,
+            });
+            return partialObjectStream as AsyncIterable<StructuredAnswerResult>;
         }
 
-        const { text } = await generateText(baseOptions);
-        return text.trim();
+        const { object } = await generateObject({
+            ...baseOptions,
+            schema: answerWithSourcesSchema,
+        });
+        return object as StructuredAnswerResult;
     }
 }

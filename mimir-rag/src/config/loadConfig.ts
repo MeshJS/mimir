@@ -134,7 +134,7 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
                 apiKey: getEnv("MIMIR_LLM_CHAT_API_KEY", false),
                 baseUrl: getEnv("MIMIR_LLM_CHAT_BASE_URL", false),
                 temperature: getEnvNumber("MIMIR_LLM_CHAT_TEMPERATURE", 0),
-                maxOutputTokens: getEnvNumber("MIMIR_LLM_CHAT_MAX_OUTPUT_TOKENS", 2000),
+                maxOutputTokens: getEnvNumber("MIMIR_LLM_CHAT_MAX_OUTPUT_TOKENS", 8000),
                 limits: {
                     concurrency: getEnvNumber("MIMIR_LLM_CHAT_LIMITS_CONCURRENCY", 8),
                     maxRequestsPerMinute: getEnvNumber("MIMIR_LLM_CHAT_LIMITS_MAX_REQUESTS_PER_MINUTE", 500),

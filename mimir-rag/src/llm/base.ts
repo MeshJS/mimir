@@ -3,7 +3,7 @@ import pLimit from "p-limit";
 import pRetry from "p-retry";
 import { ChatModelConfig, EmbeddingModelConfig } from "../config/types";
 import { batchChunks } from "../utils/batchChunks";
-import type { ChatProvider, EmbedOptions, EmbeddingProvider, GenerateAnswerOptions } from "./types";
+import type { ChatProvider, EmbedOptions, EmbeddingProvider, GenerateAnswerOptions, StructuredAnswerResult } from "./types";
 import Bottleneck from "bottleneck";
 import { Logger } from "pino";
 import { countTokensInBatch, countTokens } from "../utils/tokenEncoder";
@@ -134,9 +134,9 @@ export abstract class BaseChatProvider implements ChatProvider {
         }
     }
 
-    async generateAnswer(options: GenerateAnswerOptions & { stream?: false }): Promise<string>;
-    async generateAnswer(options: GenerateAnswerOptions & { stream: true }): Promise<AsyncIterable<string>>;
-    async generateAnswer(options: GenerateAnswerOptions): Promise<string | AsyncIterable<string>> {
+    async generateAnswer(options: GenerateAnswerOptions & { stream?: false }): Promise<StructuredAnswerResult>;
+    async generateAnswer(options: GenerateAnswerOptions & { stream: true }): Promise<AsyncIterable<StructuredAnswerResult>>;
+    async generateAnswer(options: GenerateAnswerOptions): Promise<StructuredAnswerResult | AsyncIterable<StructuredAnswerResult>> {
         const tokens = this.estimateChatTokens(options);
         return this.scheduleWithRateLimits(tokens, () => this.complete(options), {
             logPrefix: `${this.config.provider}:chat`,
@@ -151,7 +151,7 @@ export abstract class BaseChatProvider implements ChatProvider {
 
         const systemPrompt = "Please give a short succinct context (150-250 tokens) to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else.";
 
-        const userPrompt = "Summarize how this chunk fits into the broader file. Highlight the chunk’s role, upstream dependencies, and any follow-on sections a reader should review."
+        const userPrompt = "Summarize how this chunk fits into the broader file. Highlight the chunk's role, upstream dependencies, and any follow-on sections a reader should review."
 
         const limit = pLimit(Math.max(1, this.concurrencyLimit));
         const response = await Promise.all(
@@ -167,7 +167,7 @@ export abstract class BaseChatProvider implements ChatProvider {
             })))
         );
 
-        return response.map((summary) => summary.trim());
+        return response.map((result) => result.answer.trim());
     }
 
     protected estimateChatTokens(options: GenerateAnswerOptions): number {
@@ -188,7 +188,7 @@ export abstract class BaseChatProvider implements ChatProvider {
         return tokens;
     }
 
-    protected abstract complete(options: GenerateAnswerOptions): Promise<string | AsyncIterable<string>>;
+    protected abstract complete(options: GenerateAnswerOptions): Promise<StructuredAnswerResult | AsyncIterable<StructuredAnswerResult>>;
 
     private async scheduleWithRateLimits<T>(tokens: number, task: () => Promise<T>, { logPrefix, signal }: ScheduleOptions): Promise<T> {
         await this.reserveTokens(tokens);

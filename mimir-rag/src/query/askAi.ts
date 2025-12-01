@@ -4,7 +4,6 @@ import type { SupabaseVectorStore } from "../supabase/client";
 import type { RetrievedChunk } from "../supabase/types";
 import type { Logger } from "pino";
 import { getLogger } from "../utils/logger";
-import { sanitizeSourceTitle } from "../utils/sourceLinks";
 
 export interface AskAiOptions {
     question: string;
@@ -46,12 +45,14 @@ export async function askAi(
     options: AskAiOptions & { stream?: false },
     context?: AskAiContextOptions
 ): Promise<AskAiResult>;
+
 export async function askAi(
     llm: LLMClientBundle,
     store: SupabaseVectorStore,
     options: AskAiOptions & { stream: true },
     context?: AskAiContextOptions
 ): Promise<AskAiStreamResult>;
+
 export async function askAi(
     llm: LLMClientBundle,
     store: SupabaseVectorStore,
@@ -109,8 +110,8 @@ export async function askAi(
     activeLogger.info({ matchCount: matches.length }, "Generating answer with retrieved context.");
 
     if (options.stream) {
-        // Streaming mode - return stream directly
-        const stream = await llm.chat.generateAnswer({
+        // Streaming mode
+        const resultStream = await llm.chat.generateAnswer({
             prompt: trimmedQuestion,
             context: matches,
             systemPrompt: options.systemPrompt,
@@ -118,20 +119,38 @@ export async function askAi(
             signal: options.signal,
         });
 
-        // Generate sources immediately (they don't depend on the answer content for streaming)
-        const sources = dedupeMatches(matches).map((match) => ({
-            filepath: match.filepath,
-            chunkTitle: sanitizeSourceTitle(match.chunkTitle, match.filepath),
-            githubUrl: match.githubUrl ?? undefined,
-            docsUrl: match.docsUrl ?? undefined,
-            finalUrl: match.finalUrl ?? match.githubUrl ?? match.docsUrl ?? match.filepath,
-        }));
+        // Convert structured stream to text stream and collect sources
+        // partialObjectStream sends cumulative updates, so we need to track what we've sent
+        let previousAnswer = "";
+        const collectedSources: AskAiSource[] = [];
 
-        return { stream, sources };
+        async function* textStreamGenerator() {
+            for await (const chunk of resultStream) {
+                if (chunk.answer && chunk.answer !== previousAnswer) {
+                    const delta = chunk.answer.slice(previousAnswer.length);
+                    previousAnswer = chunk.answer;
+                    if (delta) {
+                        yield delta;
+                    }
+                }
+                if (chunk.sources && chunk.sources.length > 0) {
+                    collectedSources.length = 0;
+                    collectedSources.push(...chunk.sources.map((src) => ({
+                        filepath: src.filepath,
+                        chunkTitle: src.chunkTitle,
+                        githubUrl: undefined,
+                        docsUrl: undefined,
+                        finalUrl: src.url || src.filepath,
+                    })));
+                }
+            }
+        }
+
+        return { stream: textStreamGenerator(), sources: collectedSources };
     }
 
     // Non-streaming mode
-    const answer = await llm.chat.generateAnswer({
+    const result = await llm.chat.generateAnswer({
         prompt: trimmedQuestion,
         context: matches,
         systemPrompt: options.systemPrompt,
@@ -139,27 +158,17 @@ export async function askAi(
         signal: options.signal,
     });
 
-    const citedIndexes = extractUsedSourceIndexes(answer);
-    let citedMatches = selectMatchesByIndexes(matches, citedIndexes);
-    if (citedIndexes.length > 0 && citedMatches.length === 0) {
-        activeLogger.warn("Model referenced invalid source indexes; falling back to full match set.");
-    }
-
-    if (citedMatches.length === 0) {
-        citedMatches = matches;
-    }
-
-    const sources = dedupeMatches(citedMatches).map((match) => ({
-        filepath: match.filepath,
-        chunkTitle: sanitizeSourceTitle(match.chunkTitle, match.filepath),
-        githubUrl: match.githubUrl ?? undefined,
-        docsUrl: match.docsUrl ?? undefined,
-        finalUrl: match.finalUrl ?? match.githubUrl ?? match.docsUrl ?? match.filepath,
+    const sources: AskAiSource[] = result.sources.map((src) => ({
+        filepath: src.filepath,
+        chunkTitle: src.chunkTitle,
+        githubUrl: undefined,
+        docsUrl: undefined,
+        finalUrl: src.url || src.filepath,
     }));
-    const answerWithSources = appendSourcesSection(answer, sources);
-    activeLogger.info({ answer: answerWithSources }, "answer from the AI");
 
-    return { answer: answerWithSources, sources };
+    activeLogger.info({ answer: result.answer, sourcesCount: sources.length }, "answer from the AI");
+
+    return { answer: result.answer, sources };
 }
 
 function mergeAndRankMatches(
@@ -215,105 +224,4 @@ function mergeAndRankMatches(
     });
 
     return merged.slice(0, desiredCount);
-}
-
-function dedupeMatches(matches: RetrievedChunk[]): RetrievedChunk[] {
-    const seen = new Set<string>();
-    const unique: RetrievedChunk[] = [];
-    matches.forEach((match) => {
-        const key = `${match.filepath}:${match.chunkId}`;
-        if (seen.has(key)) {
-            return;
-        }
-        seen.add(key);
-        unique.push(match);
-    });
-    return unique;
-}
-
-function extractUsedSourceIndexes(answer: string): number[] {
-    if (!answer) {
-        return [];
-    }
-
-    const indexes: number[] = [];
-    const seen = new Set<number>();
-    const citationRegex = /\[S\s*(\d+)\]/gi;
-    let match: RegExpExecArray | null;
-
-    const addIndex = (value?: number) => {
-        if (typeof value !== "number" || !Number.isFinite(value)) {
-            return;
-        }
-        const normalized = Math.floor(value);
-        if (normalized > 0 && !seen.has(normalized)) {
-            seen.add(normalized);
-            indexes.push(normalized);
-        }
-    };
-
-    while ((match = citationRegex.exec(answer)) !== null) {
-        addIndex(Number.parseInt(match[1], 10));
-    }
-
-    const summaryRegex = /Sources?:\s*([^\n]+)/gi;
-    while ((match = summaryRegex.exec(answer)) !== null) {
-        const segment = match[1];
-        const tokens = segment.match(/S\s*(\d+)/gi) ?? [];
-        tokens.forEach((token) => {
-            const value = token.match(/\d+/);
-            if (value) {
-                addIndex(Number.parseInt(value[0], 10));
-            }
-        });
-    }
-
-    return indexes;
-}
-
-function selectMatchesByIndexes(matches: RetrievedChunk[], indexes: number[]): RetrievedChunk[] {
-    if (indexes.length === 0) {
-        return [];
-    }
-
-    const selected: RetrievedChunk[] = [];
-    const seenKeys = new Set<string>();
-
-    indexes.forEach((index) => {
-        const pointer = index - 1;
-        if (pointer < 0 || pointer >= matches.length) {
-            return;
-        }
-        const candidate = matches[pointer];
-        const key = `${candidate.filepath}:${candidate.chunkId}`;
-        if (!seenKeys.has(key)) {
-            seenKeys.add(key);
-            selected.push(candidate);
-        }
-    });
-
-    return selected;
-}
-
-function appendSourcesSection(answer: string, sources: AskAiSource[]): string {
-    if (!sources.length) {
-        return answer;
-    }
-
-    const SOURCE_TRAILER_REGEX = /(?:\r?\n)*Sources?:\s*(?:S\d+(?:\s*,\s*S\d+)*)\s*$/i;
-    let sanitizedAnswer = answer?.trimEnd() ?? "";
-    sanitizedAnswer = sanitizedAnswer.replace(SOURCE_TRAILER_REGEX, "").trimEnd();
-
-    const lines = sources.map((source, index) => {
-        const label = sanitizeSourceTitle(source.chunkTitle, source.filepath) || `Source ${index + 1}`;
-        const href = source.finalUrl || source.githubUrl || source.docsUrl || source.filepath;
-
-        if (href) {
-            return `- [${label}](${href})`;
-        }
-        return `- ${label}`;
-    });
-
-    const section = ["", "Sources:", ...lines].join("\n");
-    return `${sanitizedAnswer}${section}`;
 }

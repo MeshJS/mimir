@@ -1,31 +1,13 @@
 import { Logger } from "pino";
-import { BaseChatProvider, type ProviderRateLimits } from "../base";
-import type { ChatModelConfig, ProviderLimitsConfig } from "../../config/types";
-import type { GenerateAnswerOptions } from "../types";
-import { buildPromptMessages } from "../prompt";
+import { BaseChatProvider } from "../base";
+import type { ChatModelConfig } from "../../config/types";
+import type { GenerateAnswerOptions, StructuredAnswerResult } from "../types";
+import { buildPromptMessages, answerWithSourcesSchema } from "../prompt";
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { generateText, streamText } from 'ai';
+import { generateObject, streamObject } from 'ai';
+import { resolveBaseUrl, mergeLimits } from "../../utils/providerUtils";
 
 const ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com/";
-
-function resolveBaseUrl(url?: string): string {
-    if (!url) {
-        return ANTHROPIC_DEFAULT_BASE_URL;
-    }
-
-    return url.endsWith("/") ? url : `${url}/`;
-}
-
-function mergeLimits(defaults: ProviderRateLimits, override?: ProviderLimitsConfig): ProviderRateLimits {
-    if (!override) {
-        return defaults;
-    }
-
-    return {
-        ...defaults,
-        ...override,
-    };
-}
 
 export class AnthropicChatProvider extends BaseChatProvider {
     private readonly sdk: ReturnType<typeof createAnthropic>;
@@ -51,11 +33,11 @@ export class AnthropicChatProvider extends BaseChatProvider {
 
         this.sdk = createAnthropic({
             apiKey: config.apiKey,
-            baseURL: resolveBaseUrl(config.baseUrl),
+            baseURL: resolveBaseUrl(config.baseUrl, ANTHROPIC_DEFAULT_BASE_URL),
         });
     }
 
-    protected async complete(options: GenerateAnswerOptions): Promise<string | AsyncIterable<string>> {
+    protected async complete(options: GenerateAnswerOptions): Promise<StructuredAnswerResult | AsyncIterable<StructuredAnswerResult>> {
         const { system, user } = buildPromptMessages(options);
         const model = this.sdk(this.config.model);
 
@@ -69,11 +51,17 @@ export class AnthropicChatProvider extends BaseChatProvider {
         };
 
         if (options.stream) {
-            const { textStream } = await streamText(baseOptions);
-            return textStream;
+            const { partialObjectStream } = streamObject({
+                ...baseOptions,
+                schema: answerWithSourcesSchema,
+            });
+            return partialObjectStream as AsyncIterable<StructuredAnswerResult>;
         }
 
-        const { text } = await generateText(baseOptions);
-        return text.trim();
+        const { object } = await generateObject({
+            ...baseOptions,
+            schema: answerWithSourcesSchema,
+        });
+        return object as StructuredAnswerResult;
     }
 }

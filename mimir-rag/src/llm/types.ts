@@ -21,6 +21,17 @@ export interface GenerateAnswerOptions {
     stream?: boolean;
 }
 
+export interface SourceReference {
+    filepath: string;
+    chunkTitle: string;
+    url?: string;
+}
+
+export interface StructuredAnswerResult {
+    answer: string;
+    sources: SourceReference[];
+}
+
 export interface EmbeddingProvider {
     readonly config: EmbeddingModelConfig;
     embedDocuments(chunks: string[], options?: EmbedOptions): Promise<number[][]>;
@@ -29,8 +40,8 @@ export interface EmbeddingProvider {
 
 export interface ChatProvider {
     readonly config: ChatModelConfig;
-    generateAnswer(options: GenerateAnswerOptions & { stream?: false }): Promise<string>;
-    generateAnswer(options: GenerateAnswerOptions & { stream: true }): Promise<AsyncIterable<string>>;
+    generateAnswer(options: GenerateAnswerOptions & { stream?: false }): Promise<StructuredAnswerResult>;
+    generateAnswer(options: GenerateAnswerOptions & { stream: true }): Promise<AsyncIterable<StructuredAnswerResult>>;
     generateFileChunkContexts(chunks: string[], fileContent: string): Promise<string[]>;
 }
 

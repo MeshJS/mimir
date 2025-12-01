@@ -12,6 +12,7 @@ export interface McpMatchRouteContext {
 
 interface MatchDocumentResult {
     chunkTitle: string;
+    chunkContent: string;
     similarity?: number;
     githubUrl?: string;
     docsUrl?: string;
@@ -54,6 +55,7 @@ export async function handleMcpMatchRequest(
         // Transform results to safe format (no content, only metadata)
         const results: MatchDocumentResult[] = matches.map((match) => ({
             chunkTitle: match.chunkTitle,
+            chunkContent: match.content,
             similarity: match.similarity,
             githubUrl: match.githubUrl ?? undefined,
             docsUrl: match.docsUrl ?? undefined,

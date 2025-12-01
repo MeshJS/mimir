@@ -1,6 +1,6 @@
 # mimir-rag
 
-Utility CLI + API that ingests docs into Supabase and exposes `/ask` + `/ingest` endpoints.
+Utility CLI + API that ingests docs into Supabase and exposes OpenAI-compatible chat completions, MCP endpoints, and ingestion endpoints.
 
 ## Local workflow
 
@@ -66,9 +66,9 @@ Key configuration variables include:
 
 ## API Endpoints
 
-### POST /ask
+### POST /v1/chat/completions
 
-Query your documentation with authentication required.
+OpenAI-compatible chat completions endpoint that queries your documentation with RAG. Requires API key authentication.
 
 **Headers:**
 - `x-api-key: <MIMIR_SERVER_API_KEY>` or `Authorization: Bearer <MIMIR_SERVER_API_KEY>`
@@ -77,21 +77,21 @@ Query your documentation with authentication required.
 **Request body:**
 ```json
 {
-  "question": "How do I implement authentication?",
+  "messages": [
+    {
+      "role": "user",
+      "content": "How do I implement authentication?"
+    }
+  ],
   "matchCount": 10,
   "similarityThreshold": 0.2,
-  "systemPrompt": "You are a helpful coding assistant"
+  "systemPrompt": "You are a helpful coding assistant",
+  "stream": false
 }
 ```
 
 **Response:**
-```json
-{
-  "status": "ok",
-  "answer": "Based on the documentation...",
-  "sources": [...]
-}
-```
+OpenAI-compatible chat completion response format with retrieved documentation context.
 
 ### POST /mcp/ask
 
@@ -123,6 +123,38 @@ Query your documentation via MCP (Model Context Protocol) without server API key
 ```
 
 **Note:** The `/mcp/ask` endpoint bypasses the `MIMIR_SERVER_API_KEY` authentication and allows clients to specify their own LLM provider, model, and API key. This is designed for use with the [mimir-mcp](../mimir-mcp) MCP server.
+
+### POST /mcp/match
+
+Semantic search endpoint that returns matching documentation chunks without generating an AI response. No authentication required.
+
+**Headers:**
+- `Content-Type: application/json`
+
+**Request body:**
+```json
+{
+  "question": "How do I implement authentication?",
+  "matchCount": 10,
+  "similarityThreshold": 0.2
+}
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "matches": [
+    {
+      "title": "Authentication Guide",
+      "url": "https://example.com/docs/auth",
+      "similarity": 0.85
+    }
+  ]
+}
+```
+
+**Note:** This endpoint is faster than `/mcp/ask` since it only performs semantic search without LLM inference. Useful for discovering relevant documentation.
 
 ### POST /ingest
 
