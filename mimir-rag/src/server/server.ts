@@ -49,13 +49,13 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
     const logger = getLogger();
 
     const app = express();
-    app.use(
-        express.json({
-            verify: (req, _res, buf) => {
-                (req as RequestWithRawBody).rawBody = Buffer.from(buf);
-            },
-        })
-    );
+
+    const verifyRawBody = (req: any, _res: any, buf: Buffer) => {
+        (req as RequestWithRawBody).rawBody = Buffer.from(buf);
+    };
+
+    app.use(express.json({ verify: verifyRawBody }));
+    app.use(express.urlencoded({ extended: true, verify: verifyRawBody }));
     app.use(applyCors);
 
     // Apply API key middleware to all routes except /mcp/*, /webhook/*, and /health endpoints
