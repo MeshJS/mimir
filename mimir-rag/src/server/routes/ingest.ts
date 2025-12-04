@@ -37,20 +37,41 @@ async function triggerIngestion(
     context.setIngestionBusy(true);
     const startedAt = Date.now();
 
-    try {
-        logger.info({ trigger }, "Starting ingestion.");
-        const result = await runIngestionPipeline(context.config, context.llm, context.store, logger);
-        res.json({
-            status: "ok",
+    const isWebhook = trigger.startsWith('github-webhook');
+
+    if (isWebhook) {
+        res.status(202).json({
+            status: "accepted",
+            message: "Ingestion started in background.",
             trigger,
-            durationMs: Date.now() - startedAt,
-            stats: result.stats,
         });
-    } catch (error) {
-        logger.error({ err: error, trigger }, "Ingestion failed.");
-        res.status(500).json({ status: "error", message: (error as Error).message });
-    } finally {
-        context.setIngestionBusy(false);
+
+        runIngestionPipeline(context.config, context.llm, context.store, logger)
+            .then((result) => {
+                logger.info({ trigger, durationMs: Date.now() - startedAt, stats: result.stats }, "Ingestion completed.");
+            })
+            .catch((error) => {
+                logger.error({ err: error, trigger }, "Ingestion failed.");
+            })
+            .finally(() => {
+                context.setIngestionBusy(false);
+            });
+    } else {
+        try {
+            logger.info({ trigger }, "Starting ingestion.");
+            const result = await runIngestionPipeline(context.config, context.llm, context.store, logger);
+            res.json({
+                status: "ok",
+                trigger,
+                durationMs: Date.now() - startedAt,
+                stats: result.stats,
+            });
+        } catch (error) {
+            logger.error({ err: error, trigger }, "Ingestion failed.");
+            res.status(500).json({ status: "error", message: (error as Error).message });
+        } finally {
+            context.setIngestionBusy(false);
+        }
     }
 }
 
