@@ -1,29 +1,40 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:20-slim AS deps
+FROM node:20-alpine AS builder
 WORKDIR /app
-
 COPY package*.json ./
-RUN npm ci --omit=optional
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm ci --omit=optional && \
+    npm run build && \
+    npm prune --omit=dev --omit=optional && \
+    # Remove unnecessary files from node_modules
+    find node_modules -type f \( -name "*.md" -o -name "*.ts" -o -name "*.map" \) -delete && \
+    find node_modules -type d \( -name "test" -o -name "tests" -o -name "__tests__" -o -name "docs" \) -exec rm -rf {} + 2>/dev/null || true
 
-FROM node:20-slim AS runner
+FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
+# Install only postgresql-client and clean up in same layer
+RUN apk add --no-cache postgresql-client && \
+    rm -rf /var/cache/apk/* /tmp/*
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY package*.json ./
-COPY tsconfig.json ./
-COPY mimir.config.example.json ./mimir.config.example.json
-COPY src ./src
+# Copy only production dependencies and built code
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/src/supabase/setup.sql ./src/supabase/setup.sql
+COPY .env.example ./
 COPY scripts ./scripts
 
-RUN chown -R node:node /app
-USER node
+# Create non-root user and switch to it
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 && \
+    chown -R nodejs:nodejs /app
+
+USER nodejs
 
 EXPOSE 3000
 ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
-CMD ["npm", "run", "server"]
+CMD ["node", "dist/server/start.js"]

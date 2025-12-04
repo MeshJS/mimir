@@ -2,49 +2,132 @@
 
 Utility CLI + API that ingests docs into Supabase and exposes OpenAI-compatible chat completions, MCP endpoints, and ingestion endpoints.
 
-## Local workflow
+## Quick Start
 
-1. Copy `.env.example` to `.env` and fill in the Supabase + LLM details plus a `MIMIR_SERVER_API_KEY`, which every HTTP call must send in the `x-api-key` header (or `Authorization: Bearer <key>`). Run `npm run generate-apikey` any time you want the project to mint a new random key and write it into your `.env` file.
-2. Bootstrap the database schema (runs `psql src/supabase/setup.sql`):
-
+1. **Configure environment:**
    ```bash
-   make setup-db DB_URL=postgresql://user@host:5432/db DB_PASSWORD=secret
+   cp .env.example .env
+   # Edit .env with your Supabase + LLM credentials
    ```
 
-3. Start the API (automatically re-runs `setup-db` beforehand):
+2. **Generate API key:**
+   ```bash
+   npm run generate-apikey
+   ```
 
+3. **Start the server:**
    ```bash
    make server
    ```
 
-4. Kick off ingestion on demand:
+   The server automatically:
+   - Loads your `.env` configuration
+   - Bootstraps the database schema (if `DATABASE_URL` is set)
+   - Starts the API on port 3000
 
+4. **Trigger ingestion:**
    ```bash
    npm run ingest:cli
    ```
 
-   Or with a custom .env file:
+## Local Development
 
-   ```bash
-   npm run ingest:cli -- --config /path/to/custom.env
-   ```
+### Database Setup
 
-## Docker workflow
+The database schema is automatically initialized when you run `make server` if you provide database credentials in your `.env` file. You have two options:
 
-The repository includes a Node 20–based image for CI/CD and for developers who prefer not to install Node locally.
-
+**Option 1: Automatic (Recommended)**
+Add your Supabase database password to `.env`:
 ```bash
-make docker-build IMAGE_NAME=mimir-rag:local
-make docker-run IMAGE_NAME=mimir-rag:local \
-  CONFIG_PATH=./.env \
-  DB_URL=postgresql://user@host:5432/db \
-  DB_PASSWORD=secret \
-  PORT=3000
+MIMIR_SUPABASE_DB_PASSWORD=your_db_password
+```
+The system will automatically construct the `DATABASE_URL` from your `MIMIR_SUPABASE_URL`.
+
+**Option 2: Manual DATABASE_URL**
+Provide the full database URL in `.env`:
+```bash
+DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
 ```
 
-`docker-run` binds your local `.env` file into `/app/.env`, forwards the chosen port, and passes any database credentials so the container can reach Supabase.
-When `DATABASE_URL` (or `DB_URL`) is provided, the container's entrypoint automatically runs `src/supabase/setup.sql`
-before starting the server, mirroring the local `make setup-db` behavior.
+### Manual Database Setup
+
+If you need to run the schema setup manually:
+```bash
+make setup-db DB_URL=postgresql://user@host:5432/db DB_PASSWORD=secret
+```
+
+## Docker Deployment
+
+The repository includes a Node 20–based Alpine Linux image (~302MB) optimized for CI/CD and production deployments.
+
+### One-Line Setup
+
+**Build and run with your `.env` file:**
+```bash
+make docker-run-build
+```
+
+That's it! The container automatically:
+- Loads all configuration from your `.env` file
+- Sets up the database schema (no manual psql commands needed)
+- Starts the server on port 3000
+
+### Customization
+
+**Use a different port:**
+```bash
+make docker-run-build PORT=8080
+```
+
+**Use a different config file:**
+```bash
+make docker-run-build CONFIG_PATH=.env.production
+```
+
+**Custom image name:**
+```bash
+make docker-run-build IMAGE_NAME=mimir:v1.0
+```
+
+### Separate Build and Run
+
+If you prefer to build and run separately:
+
+**Build:**
+```bash
+make docker-build
+```
+
+**Run:**
+```bash
+make docker-run
+```
+
+### Manual Docker Commands
+
+**Build:**
+```bash
+docker build -t mimir-rag:local .
+```
+
+**Run:**
+```bash
+docker run --rm \
+  -p 3000:3000 \
+  -v $(pwd)/.env:/app/.env:ro \
+  mimir-rag:local
+```
+
+### How It Works
+
+The Docker container:
+1. Mounts your `.env` file to `/app/.env` (read-only)
+2. Automatically loads all environment variables from `.env`
+3. Auto-constructs `DATABASE_URL` from `MIMIR_SUPABASE_URL` + `MIMIR_SUPABASE_DB_PASSWORD` (if not already set)
+4. Runs the database schema setup SQL automatically
+5. Starts the server
+
+**No manual database setup required!** Just add your database password to `.env` and everything else is automatic.
 
 ## Configuration
 

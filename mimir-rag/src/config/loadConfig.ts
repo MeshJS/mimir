@@ -48,12 +48,14 @@ export function resolveConfigPath(providedPath?: string): string {
 }
 
 export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
-    // Load .env file
     const envPath = configPath ?? resolveConfigPath();
     const result = loadDotenv({ path: envPath });
 
-    if (result.error && configPath) {
-        throw new Error(`Failed to load environment file from "${configPath}": ${result.error.message}`);
+    if (result.error) {
+        // Only fail if an explicit path was provided, otherwise env vars may already be loaded
+        if (configPath) {
+            throw new Error(`Failed to load environment file from "${configPath}": ${result.error.message}`);
+        }
     }
 
     // Build configuration from environment variables

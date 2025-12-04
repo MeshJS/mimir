@@ -1,6 +1,6 @@
 import type { Server } from "node:http";
 import express from "express";
-import { loadAppConfig, resolveConfigPath } from "../config/loadConfig";
+import { loadAppConfig } from "../config/loadConfig";
 import { configureLogger, getLogger } from "../utils/logger";
 import { createLLMClient } from "../llm/factory";
 import { createSupabaseStore } from "../supabase/client";
@@ -26,12 +26,11 @@ export interface RunningServer {
 }
 
 async function createContext(configPath?: string): Promise<ServerContext> {
-    const resolvedPath = resolveConfigPath(configPath);
-    const config = await loadAppConfig(resolvedPath);
+    const config = await loadAppConfig(configPath);
 
     configureLogger(config.logging);
     const logger = getLogger();
-    logger.info({ resolvedPath }, "Loaded server configuration.");
+    logger.info("Loaded server configuration.");
 
     const llm = createLLMClient(config.llm, logger);
     const store = createSupabaseStore(config);
