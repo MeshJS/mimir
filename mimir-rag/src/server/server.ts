@@ -58,10 +58,10 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
     );
     app.use(applyCors);
 
-    // Apply API key middleware to all routes except /mcp/* and /webhook/* endpoints
+    // Apply API key middleware to all routes except /mcp/*, /webhook/*, and /health endpoints
     const apiKeyMiddleware = createApiKeyMiddleware(context.config.server.apiKey);
     app.use((req: any, res: any, next: any) => {
-        if (req.path.startsWith('/mcp/') || req.path.startsWith('/webhook/')) {
+        if (req.path.startsWith('/mcp/') || req.path.startsWith('/webhook/') || req.path === '/health') {
             next();
         } else {
             apiKeyMiddleware(req, res, next);
