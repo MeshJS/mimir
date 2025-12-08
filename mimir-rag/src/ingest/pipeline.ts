@@ -125,7 +125,7 @@ export async function runIngestionPipeline(
             });
 
             preparedChunks.forEach((chunk, index) => {
-                const links = resolveSourceLinks(filepath, chunk.chunkTitle, appConfig);
+                const links = resolveSourceLinks(filepath, chunk.chunkTitle, appConfig, document.sourceUrl);
                 targetState.set(chunk.checksum, {
                     filepath,
                     chunkId: index,
@@ -164,7 +164,7 @@ export async function runIngestionPipeline(
             });
 
             chunkedFile.chunks.forEach((chunk, index) => {
-                const links = resolveSourceLinks(filepath, chunk.qualifiedName, appConfig);
+                const links = resolveSourceLinks(filepath, chunk.qualifiedName, appConfig, document.sourceUrl);
                 targetState.set(chunk.checksum, {
                     filepath,
                     chunkId: index,
@@ -349,7 +349,7 @@ export async function runIngestionPipeline(
                         if (entry.chunk.sourceType === 'mdx') {
                             const contextHeader = contexts[index]?.trim() ?? "";
                             const contextualText = `${contextHeader}---${entry.chunk.chunk.chunkContent}`;
-                            const links = resolveSourceLinks(filepath, entry.chunk.chunk.chunkTitle, appConfig);
+                            const links = resolveSourceLinks(filepath, entry.chunk.chunk.chunkTitle, appConfig, document.sourceUrl);
                             pendingEmbeddings.push({
                                 filepath,
                                 chunkId: entry.chunkId,
@@ -464,7 +464,7 @@ export async function runIngestionPipeline(
     const upsertPayload: DocumentChunk[] = pendingEmbeddings.map((entry, index) => {
         const links = entry.githubUrl 
             ? { githubUrl: entry.githubUrl, docsUrl: undefined, finalUrl: entry.githubUrl }
-            : resolveSourceLinks(entry.filepath, entry.chunkTitle, appConfig);
+            : resolveSourceLinks(entry.filepath, entry.chunkTitle, appConfig, documentMap.get(entry.filepath)?.sourceUrl);
         return {
             content: entry.content,
             contextualText: entry.contextualText,

@@ -4,6 +4,7 @@ import type { SupabaseVectorStore } from "../supabase/client";
 import type { RetrievedChunk } from "../supabase/types";
 import type { Logger } from "pino";
 import { getLogger } from "../utils/logger";
+import { resolveSourceLinks } from "../utils/sourceLinks";
 
 export interface AskAiOptions {
     question: string;
@@ -138,21 +139,25 @@ export async function askAi(
                 }
                 if (chunk.sources && chunk.sources.length > 0) {
                     collectedSources.length = 0;
-                    // Map sources from matches (which have entityType, startLine, endLine)
-                    const sourceMap = new Map(matches.map(m => [`${m.filepath}:${m.chunkTitle}`, m]));
-                    collectedSources.push(...chunk.sources.map((src) => {
-                        const match = sourceMap.get(`${src.filepath}:${src.chunkTitle}`);
-                        return {
-                            filepath: src.filepath,
-                            chunkTitle: src.chunkTitle,
-                            githubUrl: match?.githubUrl,
-                            docsUrl: match?.docsUrl,
-                            finalUrl: src.url || match?.githubUrl || match?.finalUrl || src.filepath,
-                            entityType: match?.entityType,
-                            startLine: match?.startLine,
-                            endLine: match?.endLine,
-                        };
-                    }));
+                    collectedSources.push(...chunk.sources
+                        .filter((src) => src.filepath) // Filter out sources without filepath; during the first stream sources are empty
+                        .map((src) => {
+                            // Recompute URLs using resolveSourceLinks for consistency
+                            const links = resolveSourceLinks(
+                                src.filepath!,
+                                src.chunkTitle,
+                                context?.config,
+                                src.url
+                            );
+                            
+                            return {
+                                filepath: src.filepath!,
+                                chunkTitle: src.chunkTitle,
+                                githubUrl: links.githubUrl,
+                                docsUrl: links.docsUrl,
+                                finalUrl: links.finalUrl || src.url || src.filepath!,
+                            };
+                        }));
                 }
             }
         }
@@ -169,21 +174,25 @@ export async function askAi(
         signal: options.signal,
     });
 
-    // Map sources from matches (which have entityType, startLine, endLine)
-    const sourceMap = new Map(matches.map(m => [`${m.filepath}:${m.chunkTitle}`, m]));
-    const sources: AskAiSource[] = result.sources.map((src) => {
-        const match = sourceMap.get(`${src.filepath}:${src.chunkTitle}`);
-        return {
-            filepath: src.filepath,
-            chunkTitle: src.chunkTitle,
-            githubUrl: match?.githubUrl,
-            docsUrl: match?.docsUrl,
-            finalUrl: src.url || match?.githubUrl || match?.finalUrl || src.filepath,
-            entityType: match?.entityType,
-            startLine: match?.startLine,
-            endLine: match?.endLine,
-        };
-    });
+    // Recompute URLs using resolveSourceLinks for consistency
+    const sources: AskAiSource[] = result.sources
+        .filter((src) => src.filepath) // Filter out sources without filepath
+        .map((src) => {
+            const links = resolveSourceLinks(
+                src.filepath!,
+                src.chunkTitle,
+                context?.config,
+                src.url
+            );
+            
+            return {
+                filepath: src.filepath!,
+                chunkTitle: src.chunkTitle,
+                githubUrl: links.githubUrl,
+                docsUrl: links.docsUrl,
+                finalUrl: links.finalUrl || src.url || src.filepath!,
+            };
+        });
 
     activeLogger.info({ answer: result.answer, sourcesCount: sources.length }, "answer from the AI");
 

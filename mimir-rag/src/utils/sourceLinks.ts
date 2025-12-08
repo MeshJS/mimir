@@ -19,17 +19,32 @@ export interface SourceLinkResult {
 export function resolveSourceLinks(
     filepath: string,
     chunkTitle?: string,
-    config?: AppConfig
+    config?: AppConfig,
+    existingSourceUrl?: string
 ): SourceLinkResult {
     const sanitizedTitle = sanitizeSourceTitle(chunkTitle, filepath);
     const slug = slugifyHeading(sanitizedTitle);
 
-    const baseGithubUrl = computeGithubUrl(filepath, config?.github);
+    // For TypeScript files, compute GitHub URL (which checks codeUrl/codeDirectory)
+    const isTypeScriptFile = filepath?.endsWith(".ts") || filepath?.endsWith(".tsx");
+    let baseGithubUrl: string | undefined;
+    if (isTypeScriptFile) {
+        // Always compute GitHub URL for TypeScript files (uses codeUrl/codeDirectory if available)
+        baseGithubUrl = computeGithubUrl(filepath, config?.github) || existingSourceUrl;
+    } else {
+        // For MDX files, compute it or use existing sourceUrl
+        baseGithubUrl = computeGithubUrl(filepath, config?.github) || existingSourceUrl;
+    }
+    
     const baseDocsUrl = computeDocsUrl(filepath, config?.docs);
 
     const githubUrl = appendSlug(baseGithubUrl, slug);
     const docsUrl = appendSlug(baseDocsUrl, slug);
-    const finalUrl = docsUrl ?? githubUrl ?? baseDocsUrl ?? baseGithubUrl;
+    
+    // For TypeScript files, always prefer githubUrl over docsUrl
+    const finalUrl = isTypeScriptFile 
+        ? (githubUrl ?? baseGithubUrl)
+        : (docsUrl ?? githubUrl ?? baseDocsUrl ?? baseGithubUrl);
 
     return { githubUrl, docsUrl, finalUrl, sanitizedTitle, slug };
 }
@@ -41,14 +56,18 @@ export function sanitizeSourceTitle(title?: string, fallback?: string): string {
 }
 
 function computeGithubUrl(filepath: string, githubConfig?: GithubConfig): string | undefined {
-    if (!githubConfig?.githubUrl) {
+    // Try githubUrl first, then fall back to codeUrl for TypeScript files
+    const url = githubConfig?.githubUrl || githubConfig?.codeUrl;
+    if (!url) {
         return undefined;
     }
 
     try {
-        const parsed = parseGithubUrl(githubConfig.githubUrl);
+        const parsed = parseGithubUrl(url);
         const branch = githubConfig.branch ?? parsed.branch ?? DEFAULT_BRANCH;
-        const scopedPath = joinRepoPaths(parsed.path, githubConfig.directory);
+        // Use codeDirectory if codeUrl is used, otherwise use directory
+        const directory = githubConfig.codeUrl ? githubConfig.codeDirectory : githubConfig.directory;
+        const scopedPath = joinRepoPaths(parsed.path, directory);
         const repoPath = joinRepoPaths(scopedPath, filepath);
         return buildSourceUrl(parsed.owner, parsed.repo, branch, repoPath);
     } catch {
