@@ -12,6 +12,10 @@ create table if not exists docs (
     github_url text,
     docs_url text,
     final_url text,
+    source_type text not null default 'mdx',
+    entity_type text,
+    start_line integer,
+    end_line integer,
     search_tokens tsvector generated always as (
         setweight(to_tsvector('english', coalesce(chunk_title, '')), 'A') ||
         setweight(to_tsvector('english', coalesce(content, '')), 'B') ||
@@ -23,6 +27,10 @@ create table if not exists docs (
 );
 
 alter table docs
+    add column if not exists source_type text not null default 'mdx',
+    add column if not exists entity_type text,
+    add column if not exists start_line integer,
+    add column if not exists end_line integer,
     add column if not exists search_tokens tsvector generated always as (
         setweight(to_tsvector('english', coalesce(chunk_title, '')), 'A') ||
         setweight(to_tsvector('english', coalesce(content, '')), 'B') ||
@@ -32,6 +40,8 @@ alter table docs
 create index if not exists docs_filepath_idx on docs (filepath);
 create index if not exists docs_checksum_idx on docs (checksum);
 create index if not exists docs_search_tokens_idx on docs using gin (search_tokens);
+create index if not exists docs_source_type_idx on docs (source_type);
+create index if not exists docs_entity_type_idx on docs (entity_type);
 
 create or replace function set_updated_at()
 returns trigger as $$
@@ -67,6 +77,10 @@ returns table (
     github_url text,
     docs_url text,
     final_url text,
+    source_type text,
+    entity_type text,
+    start_line integer,
+    end_line integer,
     similarity float
 ) language sql as $$
   select
@@ -81,6 +95,10 @@ returns table (
     github_url,
     docs_url,
     final_url,
+    source_type,
+    entity_type,
+    start_line,
+    end_line,
     1 - (embedding <=> query_embedding) as similarity
   from docs
   where 1 - (embedding <=> query_embedding) >= similarity_threshold
@@ -104,6 +122,10 @@ returns table (
     github_url text,
     docs_url text,
     final_url text,
+    source_type text,
+    entity_type text,
+    start_line integer,
+    end_line integer,
     bm25_rank float
 ) language sql as $$
   with search_query as (
@@ -121,6 +143,10 @@ returns table (
       d.github_url,
       d.docs_url,
       d.final_url,
+      d.source_type,
+      d.entity_type,
+      d.start_line,
+      d.end_line,
       ts_rank_cd(d.search_tokens, sq.ts_query) as bm25_rank
   from docs d
   cross join search_query sq
