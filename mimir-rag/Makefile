@@ -3,9 +3,9 @@
 # Export environment variables to subprocesses
 export
 
-# Use environment variables (Make automatically imports them)
-DB_URL ?= $(DATABASE_URL)
-DB_PASSWORD ?= $(PGPASSWORD)
+# Use environment variables - check both Make variable and environment variable
+DB_URL ?= $(or $(DATABASE_URL),$(shell echo $$DATABASE_URL))
+DB_PASSWORD ?= $(or $(PGPASSWORD),$(shell echo $$PGPASSWORD))
 PSQL ?= psql
 SETUP_SQL := src/supabase/setup.sql
 IMAGE_NAME ?= mimir-rag:local
@@ -14,14 +14,16 @@ CONFIG_ABS := $(abspath $(CONFIG_PATH))
 PORT ?= 3000
 
 setup-db:
-	@if [ -z "$(strip $(DB_URL))" ]; then \
+	@if [ -z "$${DATABASE_URL:-$(DB_URL)}" ]; then \
 		echo "Error: set DATABASE_URL (or pass DB_URL=...) so the schema can be bootstrapped."; \
 		exit 1; \
 	fi
-	@if [ -z "$(strip $(DB_PASSWORD))" ]; then \
-		$(PSQL) "$(DB_URL)" -f $(SETUP_SQL); \
+	@DB_URL="$${DATABASE_URL:-$(DB_URL)}"; \
+	DB_PASSWORD="$${PGPASSWORD:-$(DB_PASSWORD)}"; \
+	if [ -z "$$DB_PASSWORD" ]; then \
+		$(PSQL) "$$DB_URL" -f $(SETUP_SQL); \
 	else \
-		PGPASSWORD="$(DB_PASSWORD)" $(PSQL) "$(DB_URL)" -f $(SETUP_SQL); \
+		PGPASSWORD="$$DB_PASSWORD" $(PSQL) "$$DB_URL" -f $(SETUP_SQL); \
 	fi
 
 server: setup-db
