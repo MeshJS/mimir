@@ -67,6 +67,19 @@ Required environment variables:
 npm run ingest
 ```
 
+### 5. Start Server (Optional)
+
+```bash
+npm run start
+# or
+make server
+```
+
+The server provides:
+- `GET /health` - Health check endpoint
+- `POST /ingest` - Trigger ingestion pipeline (requires API key)
+- `POST /v1/chat/completions` - OpenAI-compatible chat endpoint (requires API key)
+
 ## Configuration
 
 ### GitHub Source
@@ -184,8 +197,43 @@ CREATE TABLE autodocs_chunks (
 
 ```bash
 npm run ingest          # Run ingestion pipeline
+npm run start           # Start the server
+npm run dev             # Start server in development mode
 npm run generate-apikey # Generate a new API key
 npm run build           # Build TypeScript
+```
+
+## API Endpoints
+
+### Health Check
+```bash
+GET /health
+# Returns: { "status": "ok", "ingestionBusy": false }
+```
+
+### Trigger Ingestion
+```bash
+POST /ingest
+Headers: x-api-key: <your-api-key>
+# Returns: { "status": "ok", "trigger": "manual-request", "durationMs": 1234, "stats": {...} }
+```
+
+### Chat Completions (OpenAI-compatible)
+```bash
+POST /v1/chat/completions
+Headers: 
+  x-api-key: <your-api-key>
+  Content-Type: application/json
+Body:
+{
+  "model": "mimir-autodocs",
+  "messages": [
+    { "role": "user", "content": "How does the parseTypescriptFile function work?" }
+  ],
+  "stream": false,
+  "matchCount": 10,
+  "similarityThreshold": 0.5
+}
 ```
 
 ## Docker Usage
@@ -223,6 +271,7 @@ SUPABASE_DB_PASSWORD=your_database_password
 
 ```bash
 make setup-db          # Run database setup SQL
+make server            # Start the server (runs setup-db first)
 make ingest            # Run ingestion pipeline
 make clean             # Remove dist and tmp directories
 make docker-build       # Build Docker image

@@ -37,5 +37,5 @@ USER nodejs
 
 EXPOSE 3001
 ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
-CMD ["node", "dist/cli/ingest.js"]
+CMD ["node", "dist/server/start.js"]
 

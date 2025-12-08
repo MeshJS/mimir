@@ -1,4 +1,4 @@
-.PHONY: setup-db ingest clean docker-build docker-run docker-run-build
+.PHONY: setup-db server ingest clean docker-build docker-run docker-run-build
 
 # Export environment variables to subprocesses
 export
@@ -30,6 +30,9 @@ setup-db:
 	else \
 		PGPASSWORD="$$DB_PASSWORD" $(PSQL) "$$DB_URL" -f $(SETUP_SQL); \
 	fi
+
+server: setup-db
+	npm run start
 
 ingest:
 	npm run ingest
