@@ -79,7 +79,8 @@ export async function downloadGithubTypescriptFiles(appConfig: AppConfig): Promi
         branch,
         scopedPath,
         headers,
-        appConfig.parser
+        appConfig.parser,
+        config.includeDirectories
     );
 
     logger.info(`Found ${tsEntries.length} TypeScript file${tsEntries.length === 1 ? "" : "s"}.`);
@@ -101,16 +102,17 @@ async function collectTypescriptFiles(
     branch: string,
     basePath: string,
     headers: Record<string, string>,
-    parserConfig?: ParserConfig
+    parserConfig?: ParserConfig,
+    includeDirectories?: string[]
 ): Promise<GithubTypescriptDocument[]> {
     try {
-        return await collectTypescriptFilesViaTree(owner, repo, branch, basePath, headers, parserConfig);
+        return await collectTypescriptFilesViaTree(owner, repo, branch, basePath, headers, parserConfig, includeDirectories);
     } catch (error) {
         getLogger().warn(
             { err: error },
             "Failed to use Git tree API for TypeScript discovery. Falling back to directory walk."
         );
-        return collectTypescriptFilesLegacy(owner, repo, branch, basePath, headers, parserConfig);
+        return collectTypescriptFilesLegacy(owner, repo, branch, basePath, headers, parserConfig, includeDirectories);
     }
 }
 
@@ -120,7 +122,8 @@ async function collectTypescriptFilesViaTree(
     branch: string,
     basePath: string,
     headers: Record<string, string>,
-    parserConfig?: ParserConfig
+    parserConfig?: ParserConfig,
+    includeDirectories?: string[]
 ): Promise<GithubTypescriptDocument[]> {
     const tree = await fetchRepoTree(owner, repo, branch, headers);
     const normalizedBase = normalizeRepoPath(basePath);
@@ -137,10 +140,20 @@ async function collectTypescriptFilesViaTree(
         if (shouldExcludeFile(entry.path, excludePatterns)) {
             return false;
         }
-        if (!normalizedBase) {
-            return true;
+        
+        // Check if file is within base path
+        if (normalizedBase) {
+            if (entry.path !== normalizedBase && !entry.path.startsWith(prefix)) {
+                return false;
+            }
         }
-        return entry.path === normalizedBase || entry.path.startsWith(prefix);
+        
+        // If includeDirectories is specified, only include files from those directories
+        if (includeDirectories && includeDirectories.length > 0) {
+            return shouldIncludeFile(entry.path, normalizedBase, includeDirectories);
+        }
+        
+        return true;
     });
 
     const limit = pLimit(FILE_DOWNLOAD_CONCURRENCY);
@@ -169,12 +182,14 @@ async function collectTypescriptFilesLegacy(
     branch: string,
     basePath: string,
     headers: Record<string, string>,
-    parserConfig?: ParserConfig
+    parserConfig?: ParserConfig,
+    includeDirectories?: string[]
 ): Promise<GithubTypescriptDocument[]> {
     const queue: string[] = [basePath];
     const visited = new Set<string>();
     const tsFiles: GithubTypescriptDocument[] = [];
     const excludePatterns = parserConfig?.excludePatterns ?? [];
+    const normalizedBase = normalizeRepoPath(basePath);
 
     while (queue.length > 0) {
         const currentPath = queue.shift() ?? "";
@@ -198,6 +213,13 @@ async function collectTypescriptFilesLegacy(
                     if (shouldExcludeFile(entry.path, excludePatterns)) {
                         continue;
                     }
+                    
+                    // Check include directories if specified
+                    if (includeDirectories && includeDirectories.length > 0) {
+                        if (!shouldIncludeFile(entry.path, normalizedBase, includeDirectories)) {
+                            continue;
+                        }
+                    }
 
                     const file = await fetchFile(owner, repo, branch, entry.path, headers);
                     const content = await resolveFileContent(file, headers);
@@ -213,17 +235,26 @@ async function collectTypescriptFilesLegacy(
                 }
             }
         } else if (contents.type === "file" && isTypescriptFile(contents.name)) {
-            if (!shouldExcludeFile(contents.path, excludePatterns)) {
-                const content = await resolveFileContent(contents, headers);
-                tsFiles.push({
-                    path: contents.path,
-                    relativePath: "",
-                    content,
-                    sha: contents.sha,
-                    size: contents.size,
-                    sourceUrl: "",
-                });
+            if (shouldExcludeFile(contents.path, excludePatterns)) {
+                continue;
             }
+            
+            // Check include directories if specified
+            if (includeDirectories && includeDirectories.length > 0) {
+                if (!shouldIncludeFile(contents.path, normalizedBase, includeDirectories)) {
+                    continue;
+                }
+            }
+            
+            const content = await resolveFileContent(contents, headers);
+            tsFiles.push({
+                path: contents.path,
+                relativePath: "",
+                content,
+                sha: contents.sha,
+                size: contents.size,
+                sourceUrl: "",
+            });
         }
     }
 
@@ -413,6 +444,42 @@ function shouldExcludeFile(filepath: string, excludePatterns: string[]): boolean
         }
     }
 
+    return false;
+}
+
+/**
+ * Check if a file path is within any of the included directories
+ */
+function shouldIncludeFile(filepath: string, basePath: string, includeDirectories: string[]): boolean {
+    // Normalize paths for comparison
+    const normalizedBase = normalizeRepoPath(basePath);
+    const normalizedPath = normalizeRepoPath(filepath);
+    
+    for (const includeDir of includeDirectories) {
+        const normalizedInclude = normalizeRepoPath(includeDir);
+        
+        // Build the full path: basePath + includeDir
+        let fullIncludePath: string;
+        if (normalizedBase) {
+            fullIncludePath = normalizedBase.endsWith("/")
+                ? `${normalizedBase}${normalizedInclude}`
+                : `${normalizedBase}/${normalizedInclude}`;
+        } else {
+            fullIncludePath = normalizedInclude;
+        }
+        
+        // Check if file path starts with the include directory path
+        // Also handle exact match or directory prefix
+        if (
+            normalizedPath === fullIncludePath ||
+            normalizedPath.startsWith(fullIncludePath + "/") ||
+            normalizedPath.startsWith(normalizedInclude + "/") ||
+            normalizedPath === normalizedInclude
+        ) {
+            return true;
+        }
+    }
+    
     return false;
 }
 

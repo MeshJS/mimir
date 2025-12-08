@@ -22,6 +22,8 @@ export interface GithubConfig {
     branch?: string;
     token?: string;
     outputDir?: string;
+    /** Only include files from these directories (relative to directory or repo root) */
+    includeDirectories?: string[];
 }
 
 export interface ParserConfig {

@@ -52,6 +52,7 @@ export function loadConfig(): AppConfig {
             branch: optionalEnv("GITHUB_BRANCH"),
             token: optionalEnv("GITHUB_TOKEN"),
             outputDir: optionalEnv("GITHUB_OUTPUT_DIR"),
+            includeDirectories: optionalEnv("GITHUB_INCLUDE_DIRECTORIES")?.split(",").map(d => d.trim()).filter(Boolean),
         },
         parser: {
             extractVariables: parseBoolean(optionalEnv("EXTRACT_VARIABLES"), false),

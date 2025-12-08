@@ -73,9 +73,16 @@ npm run ingest
 
 ```env
 GITHUB_URL=https://github.com/owner/repo
-GITHUB_DIRECTORY=src           # Optional: specific directory to index
+GITHUB_DIRECTORY=packages     # Optional: specific directory to index (e.g., "packages")
 GITHUB_BRANCH=main            # Optional: branch (defaults to main)
 GITHUB_TOKEN=ghp_xxx          # Optional: for private repos
+GITHUB_INCLUDE_DIRECTORIES=packages/utils,packages/core  # Optional: only include these subdirectories
+```
+
+**Example:** If you have a `packages` folder and only want to index `packages/utils` and `packages/core`:
+```env
+GITHUB_DIRECTORY=packages
+GITHUB_INCLUDE_DIRECTORIES=packages/utils,packages/core
 ```
 
 ### Parser Options
