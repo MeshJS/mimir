@@ -55,13 +55,26 @@ function formatDocumentChunks(chunks: DocumentChunk[]): string {
             const header = `Source ${index + 1}: ${chunk.filepath}#${chunk.chunkId}`;
             const title = chunk.chunkTitle ? ` (${chunk.chunkTitle})` : "";
             const entityType = chunk.entityType ? ` [${chunk.entityType}]` : "";
-            // Include both contextual text (which has the context header) and the raw code content
+            
+            // The contextualText should already include the context header + code
+            // But we want to make sure the code is clearly visible
             const contextualPart = chunk.contextualText?.trim() || "";
             const codePart = chunk.content.trim();
-            // If contextual text already includes the code, don't duplicate
-            const body = contextualPart.includes(codePart) 
-                ? contextualPart 
-                : `${contextualPart}\n\nCode:\n\`\`\`typescript\n${codePart}\n\`\`\``;
+            
+            // If contextual text doesn't clearly show the code in a code block, add it
+            // Check if code block already exists
+            const hasCodeBlock = contextualPart.includes("```typescript") || contextualPart.includes("```");
+            const codeInContext = contextualPart.includes(codePart.substring(0, Math.min(50, codePart.length)));
+            
+            let body = contextualPart;
+            if (!hasCodeBlock && codePart && !codeInContext) {
+                // Add code in a code block for clarity
+                body = `${contextualPart}\n\nActual code:\n\`\`\`typescript\n${codePart}\n\`\`\``;
+            } else if (hasCodeBlock && !codeInContext) {
+                // Context has code block but not this code, append it
+                body = `${contextualPart}\n\nAdditional code from this entity:\n\`\`\`typescript\n${codePart}\n\`\`\``;
+            }
+            
             return `${header}${title}${entityType}\n${body}`;
         })
         .join("\n\n");
