@@ -254,7 +254,12 @@ make docker-run-build
 The Docker container will:
 1. Automatically run `setup.sql` to create tables if `DATABASE_URL` is set
 2. Load environment variables from `.env` file
-3. Run the ingestion pipeline
+3. Start the server (listens on port 3001 by default)
+
+To run ingestion in Docker, override the CMD:
+```bash
+docker run --rm -v $(pwd)/.env:/app/.env mimir-autodocs:local node dist/cli/ingest.js
+```
 
 ### Environment Variables for Docker
 
