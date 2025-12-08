@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS autodocs_chunks (
     id BIGSERIAL PRIMARY KEY,
     content TEXT NOT NULL,
     contextual_text TEXT NOT NULL,
-    embedding vector(1536),  -- Adjust dimension based on your embedding model
+    embedding vector(1536),  -- Adjust dimension based on your embedding model (1536 for text-embedding-3-small)
     filepath TEXT NOT NULL,
     chunk_id INTEGER NOT NULL,
     chunk_title TEXT NOT NULL,
@@ -89,7 +89,9 @@ CREATE TRIGGER autodocs_chunks_updated_at
     EXECUTE FUNCTION update_autodocs_updated_at();
 
 -- Create HNSW index for faster vector similarity search (optional, for large datasets)
--- Uncomment if needed:
+-- Note: HNSW index only works for vectors with <= 2000 dimensions
+-- For 1536 dimensions (text-embedding-3-small), this works fine
+-- Uncomment if you need faster similarity search on large datasets:
 -- CREATE INDEX IF NOT EXISTS idx_autodocs_chunks_embedding ON autodocs_chunks 
---     USING hnsw (embedding vector_cosine_ops);
+-- USING hnsw (embedding vector_cosine_ops);
 
