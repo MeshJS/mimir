@@ -224,7 +224,6 @@ export abstract class BaseChatProvider implements ChatProvider {
     }
 
     protected abstract complete(systemPrompt: string, userPrompt: string): Promise<string>;
-    protected abstract completeAnswer(options: GenerateAnswerOptions): Promise<StructuredAnswerResult | AsyncIterable<StructuredAnswerResult>>;
 
     private async scheduleWithRateLimits<T>(
         tokens: number,
