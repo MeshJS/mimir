@@ -1,0 +1,47 @@
+{
+  "name": "mimir-autodocs",
+  "version": "1.0.0",
+  "description": "Auto-documentation RAG for TypeScript projects - extracts code entities via AST parsing and generates contextual embeddings",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server/start.js",
+    "dev": "tsx src/server/start.ts",
+    "ingest": "tsx src/cli/ingest.ts",
+    "generate-apikey": "tsx src/cli/generateApiKey.ts"
+  },
+  "keywords": [
+    "typescript",
+    "documentation",
+    "rag",
+    "ast",
+    "embeddings",
+    "vector-search"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/node": "^24.10.0",
+    "pino-pretty": "^13.1.2",
+    "tsx": "^4.20.6"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.50",
+    "@ai-sdk/google": "^2.0.44",
+    "@ai-sdk/mistral": "^2.0.25",
+    "@ai-sdk/openai": "^2.0.74",
+    "@supabase/supabase-js": "^2.81.0",
+    "ai": "^5.0.104",
+    "bottleneck": "^2.19.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "p-limit": "^7.2.0",
+    "p-retry": "^7.1.0",
+    "pino": "^10.1.0",
+    "tiktoken": "^1.0.22",
+    "typescript": "^5.9.3"
+  }
+}
+
