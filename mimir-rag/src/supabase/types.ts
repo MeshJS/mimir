@@ -9,6 +9,10 @@ export interface DocumentChunk {
     githubUrl?: string;
     docsUrl?: string;
     finalUrl?: string;
+    sourceType?: 'mdx' | 'typescript';
+    entityType?: string;
+    startLine?: number;
+    endLine?: number;
     createdAt?: string;
     updatedAt?: string;
 }

@@ -3,10 +3,11 @@ import pLimit from "p-limit";
 import pRetry from "p-retry";
 import { ChatModelConfig, EmbeddingModelConfig } from "../config/types";
 import { batchChunks } from "../utils/batchChunks";
-import type { ChatProvider, EmbedOptions, EmbeddingProvider, GenerateAnswerOptions, StructuredAnswerResult } from "./types";
+import type { ChatProvider, EmbedOptions, EmbeddingProvider, GenerateAnswerOptions, StructuredAnswerResult, EntityContextInput } from "./types";
 import Bottleneck from "bottleneck";
 import { Logger } from "pino";
 import { countTokensInBatch, countTokens } from "../utils/tokenEncoder";
+import { getEntityContextSystemPrompt, buildBatchContextPrompt, parseNumberedResponse } from "./entityPrompts";
 
 export interface ProviderRateLimits {
     batchSize?: number;
@@ -169,6 +170,55 @@ export abstract class BaseChatProvider implements ChatProvider {
 
         return response.map((result) => result.answer.trim());
     }
+
+    async generateEntityContexts(entities: EntityContextInput[], fileContent: string): Promise<string[]> {
+        if (entities.length === 0) {
+            return [];
+        }
+
+        // Process in smaller batches to avoid context limits
+        const BATCH_SIZE = 5;
+        const batches = batchChunks(entities, BATCH_SIZE);
+        const allContexts: string[] = [];
+
+        const limit = pLimit(Math.max(1, this.concurrencyLimit));
+
+        const batchResults = await Promise.all(
+            batches.map((batch, batchIndex) =>
+                limit(async () => {
+                    const systemPrompt = getEntityContextSystemPrompt();
+                    const userPrompt = buildBatchContextPrompt(batch, fileContent);
+
+                    const tokens = this.estimateEntityContextTokens(systemPrompt, userPrompt);
+                    const response = await this.scheduleWithRateLimits(
+                        tokens,
+                        () => this.completeEntityContext(systemPrompt, userPrompt),
+                        { logPrefix: `${this.config.provider}:context`, signal: undefined }
+                    );
+
+                    const contexts = parseNumberedResponse(response, batch.length);
+                    return { batchIndex, contexts };
+                })
+            )
+        );
+
+        // Sort by batch index and flatten
+        batchResults
+            .sort((a, b) => a.batchIndex - b.batchIndex)
+            .forEach(({ contexts }) => allContexts.push(...contexts));
+
+        return allContexts;
+    }
+
+    protected estimateEntityContextTokens(systemPrompt: string, userPrompt: string): number {
+        const model = this.config.model;
+        let tokens = countTokens(systemPrompt, model);
+        tokens += countTokens(userPrompt, model);
+        tokens += this.config.maxOutputTokens ?? 500; // Estimate for context generation output
+        return tokens;
+    }
+
+    protected abstract completeEntityContext(systemPrompt: string, userPrompt: string): Promise<string>;
 
     protected estimateChatTokens(options: GenerateAnswerOptions): number {
         const model = this.config.model;

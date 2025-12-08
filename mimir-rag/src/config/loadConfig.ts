@@ -66,7 +66,7 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
 
     const supabaseUrl = getEnv("MIMIR_SUPABASE_URL");
     const supabaseServiceRoleKey = getEnv("MIMIR_SUPABASE_SERVICE_ROLE_KEY");
-    const supabaseTable = getEnv("MIMIR_SUPABASE_TABLE") ?? "documents";
+    const supabaseTable = getEnv("MIMIR_SUPABASE_TABLE", false) ?? "docs";
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         throw new Error("Supabase configuration requires MIMIR_SUPABASE_URL and MIMIR_SUPABASE_SERVICE_ROLE_KEY.");
@@ -106,11 +106,24 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
             enableHybridSearch: getEnvBoolean("MIMIR_SUPABASE_ENABLE_HYBRID_SEARCH", true),
         },
         github: {
-            githubUrl: getEnv("MIMIR_GITHUB_URL") ?? "",
+            githubUrl: getEnv("MIMIR_GITHUB_URL", false) ?? "",
             directory: getEnv("MIMIR_GITHUB_DIRECTORY", false),
+            includeDirectories: getEnv("MIMIR_GITHUB_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
+            codeUrl: getEnv("MIMIR_GITHUB_CODE_URL", false),
+            codeDirectory: getEnv("MIMIR_GITHUB_CODE_DIRECTORY", false),
+            codeIncludeDirectories: getEnv("MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
+            docsUrl: getEnv("MIMIR_GITHUB_DOCS_URL", false),
+            docsDirectory: getEnv("MIMIR_GITHUB_DOCS_DIRECTORY", false),
+            docsIncludeDirectories: getEnv("MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
             branch: getEnv("MIMIR_GITHUB_BRANCH", false) ?? "main",
             token: getEnv("MIMIR_GITHUB_TOKEN", false),
             outputDir: getEnv("MIMIR_GITHUB_OUTPUT_DIR", false) ?? "./tmp/github-cache",
+        },
+        parser: {
+            extractVariables: getEnvBoolean("MIMIR_EXTRACT_VARIABLES", false),
+            extractMethods: getEnvBoolean("MIMIR_EXTRACT_METHODS", true),
+            excludePatterns: getEnv("MIMIR_EXCLUDE_PATTERNS", false)?.split(",").map(p => p.trim()).filter(Boolean),
+            includeDirectories: getEnv("MIMIR_GITHUB_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
         },
         docs: {
             baseUrl: getEnv("MIMIR_DOCS_BASE_URL", false),

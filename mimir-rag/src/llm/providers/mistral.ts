@@ -4,7 +4,7 @@ import type { ChatModelConfig, EmbeddingModelConfig } from "../../config/types";
 import type { EmbedOptions, GenerateAnswerOptions, StructuredAnswerResult } from "../types";
 import { buildPromptMessages, answerWithSourcesSchema } from "../prompt";
 import { createMistral } from '@ai-sdk/mistral';
-import { embedMany, generateObject, streamObject } from 'ai';
+import { embedMany, generateObject, streamObject, generateText } from 'ai';
 import { resolveBaseUrl, mergeLimits } from "../../utils/providerUtils";
 
 const MISTRAL_DEFAULT_BASE_URL = "https://api.mistral.ai/";
@@ -104,5 +104,19 @@ export class MistralChatProvider extends BaseChatProvider {
             schema: answerWithSourcesSchema,
         });
         return object as StructuredAnswerResult;
+    }
+
+    protected async completeEntityContext(systemPrompt: string, userPrompt: string): Promise<string> {
+        const model = this.sdk(this.config.model);
+
+        const { text } = await generateText({
+            model,
+            system: systemPrompt,
+            prompt: userPrompt,
+            temperature: this.config.temperature,
+            maxOutputTokens: this.config.maxOutputTokens ?? 500,
+        });
+
+        return text;
     }
 }

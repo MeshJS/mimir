@@ -22,10 +22,24 @@ export interface SupabaseConfig {
 
 export interface GithubConfig {
     githubUrl: string;
-    directory?: string;
+    directory?: string; // Directory for main repo (fallback if separate not set)
+    includeDirectories?: string[]; // Include directories for main repo (fallback if separate not set)
+    codeUrl?: string; // Optional: separate repo for TypeScript code
+    codeDirectory?: string; // Optional: directory for code repo
+    codeIncludeDirectories?: string[]; // Optional: include directories for code repo
+    docsUrl?: string; // Optional: separate repo for MDX docs
+    docsDirectory?: string; // Optional: directory for docs repo
+    docsIncludeDirectories?: string[]; // Optional: include directories for docs repo
     branch?: string;
     token?: string;
     outputDir?: string;
+}
+
+export interface ParserConfig {
+    extractVariables?: boolean;
+    extractMethods?: boolean;
+    excludePatterns?: string[];
+    includeDirectories?: string[];
 }
 
 export interface DocumentationConfig {
@@ -76,5 +90,6 @@ export interface AppConfig {
     logging: LoggingConfig;
     github: GithubConfig;
     docs?: DocumentationConfig;
+    parser?: ParserConfig;
     llm: LLMConfig;
 }

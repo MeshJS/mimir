@@ -13,6 +13,7 @@ import {
 } from "../github/utils";
 import { getLogger } from "../utils/logger";
 import pLimit from "p-limit";
+import { downloadGithubTypescriptFiles, GithubTypescriptDocument } from "./typescript";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const RAW_GITHUB_BASE = "https://raw.githubusercontent.com";
@@ -45,6 +46,18 @@ interface GithubTreeEntry {
 }
 
 export interface GithubMdxDocument {
+    path: string;
+    relativePath: string;
+    content: string;
+    sha: string;
+    size: number;
+    sourceUrl: string;
+}
+
+export type GithubDocumentType = "mdx" | "typescript";
+
+export interface GithubDocument {
+    type: GithubDocumentType;
     path: string;
     relativePath: string;
     content: string;
@@ -360,4 +373,77 @@ async function resetOutputDirectory(directory: string, logger: Logger): Promise<
     }
 
     await fs.mkdir(directory, { recursive: true });
+}
+
+/**
+ * Downloads both MDX and TypeScript files from GitHub repositories
+ * Supports separate repos for code and docs, or a single repo for both
+ * Returns a unified array of documents with type information
+ */
+export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubDocument[]> {
+    const logger = getLogger();
+    const documents: GithubDocument[] = [];
+    const config = appConfig.github;
+
+    // Determine which URLs to use
+    const docsUrl = config.docsUrl ?? config.githubUrl;
+    const codeUrl = config.codeUrl ?? config.githubUrl;
+
+    if (!docsUrl && !codeUrl) {
+        throw new Error("At least one of MIMIR_GITHUB_URL, MIMIR_GITHUB_DOCS_URL, or MIMIR_GITHUB_CODE_URL must be set.");
+    }
+
+    // Download MDX files from docs repo
+    if (docsUrl) {
+        try {
+            // Use docs-specific config, falling back to main config
+            const docsDir = config.docsDirectory ?? config.directory;
+            const docsIncludeDirs = config.docsIncludeDirectories ?? config.includeDirectories;
+            const docsConfig = { 
+                ...appConfig, 
+                github: { 
+                    ...config, 
+                    githubUrl: docsUrl,
+                    directory: docsDir,
+                    includeDirectories: docsIncludeDirs,
+                } 
+            };
+            const mdxFiles = await downloadGithubMdxFiles(docsConfig);
+            documents.push(...mdxFiles.map((doc) => ({
+                type: "mdx" as const,
+                ...doc,
+            })));
+            logger.info(`Found ${mdxFiles.length} MDX file${mdxFiles.length === 1 ? "" : "s"} from ${docsUrl}.`);
+        } catch (error) {
+            logger.warn({ err: error, url: docsUrl }, "Failed to download MDX files; continuing with TypeScript files only.");
+        }
+    }
+
+    // Download TypeScript files from code repo
+    if (codeUrl) {
+        try {
+            // Use code-specific config, falling back to main config
+            const codeDir = config.codeDirectory ?? config.directory;
+            const codeIncludeDirs = config.codeIncludeDirectories ?? config.includeDirectories;
+            const codeConfig = { 
+                ...appConfig, 
+                github: { 
+                    ...config, 
+                    githubUrl: codeUrl,
+                    directory: codeDir,
+                    includeDirectories: codeIncludeDirs,
+                } 
+            };
+            const tsFiles = await downloadGithubTypescriptFiles(codeConfig);
+            documents.push(...tsFiles.map((doc) => ({
+                type: "typescript" as const,
+                ...doc,
+            })));
+            logger.info(`Found ${tsFiles.length} TypeScript file${tsFiles.length === 1 ? "" : "s"} from ${codeUrl}.`);
+        } catch (error) {
+            logger.warn({ err: error, url: codeUrl }, "Failed to download TypeScript files; continuing with MDX files only.");
+        }
+    }
+
+    return documents;
 }
