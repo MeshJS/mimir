@@ -16,7 +16,7 @@ import pLimit from "p-limit";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const RAW_GITHUB_BASE = "https://raw.githubusercontent.com";
-const USER_AGENT = "mimir-autodocs";
+const USER_AGENT = "mimir-code-rag";
 const FILE_DOWNLOAD_CONCURRENCY = 8;
 
 interface GithubTreeEntry {

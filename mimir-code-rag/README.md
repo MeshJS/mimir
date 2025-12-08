@@ -1,4 +1,4 @@
-# mimir-autodocs
+# mimir-code-rag
 
 Auto-documentation RAG for TypeScript projects. Extracts code entities (functions, classes, interfaces, types, enums) via AST parsing, generates contextual descriptions using LLM, and stores embeddings for semantic search.
 
@@ -28,7 +28,7 @@ Auto-documentation RAG for TypeScript projects. Extracts code entities (function
 ### 1. Install Dependencies
 
 ```bash
-cd mimir-autodocs
+cd mimir-code-rag
 npm install
 ```
 
@@ -176,7 +176,7 @@ Upserts to Supabase with vector embeddings for semantic search.
 ## Database Schema
 
 ```sql
-CREATE TABLE autodocs_chunks (
+CREATE TABLE code_chunks (
     id BIGSERIAL PRIMARY KEY,
     content TEXT NOT NULL,           -- Original code
     contextual_text TEXT NOT NULL,   -- Context + code
@@ -226,7 +226,7 @@ Headers:
   Content-Type: application/json
 Body:
 {
-  "model": "mimir-autodocs",
+  "model": "mimir-code-rag",
   "messages": [
     { "role": "user", "content": "How does the parseTypescriptFile function work?" }
   ],
@@ -258,7 +258,7 @@ The Docker container will:
 
 To run ingestion in Docker, override the CMD:
 ```bash
-docker run --rm -v $(pwd)/.env:/app/.env mimir-autodocs:local node dist/cli/ingest.js
+docker run --rm -v $(pwd)/.env:/app/.env mimir-code-rag:local node dist/cli/ingest.js
 ```
 
 ### Environment Variables for Docker

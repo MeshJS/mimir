@@ -54,7 +54,7 @@ function extractQuestionAndSystem(messages: OpenAIMessage[]): {
     return { question, systemPrompt };
 }
 
-function createOpenAIResponse(content: string, sources: any[], model: string = "mimir-autodocs") {
+function createOpenAIResponse(content: string, sources: any[], model: string = "mimir-code-rag") {
     return {
         id: `chatcmpl-${Date.now()}`,
         object: "chat.completion",
@@ -112,7 +112,7 @@ export async function handleChatCompletions(
         return;
     }
 
-    const model = body.model || "mimir-autodocs";
+    const model = body.model || "mimir-code-rag";
     const isStreaming = body.stream === true;
 
     if (isStreaming) {

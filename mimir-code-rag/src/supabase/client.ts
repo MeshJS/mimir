@@ -42,7 +42,7 @@ export class SupabaseVectorStore {
             },
             global: {
                 headers: {
-                    "X-Client-Info": "mimir-autodocs/1.0.0",
+                    "X-Client-Info": "mimir-code-rag/1.0.0",
                 },
             },
         });
@@ -235,15 +235,15 @@ export class SupabaseVectorStore {
         const matchCount = options?.matchCount ?? this.config.matchCount;
         const similarityThreshold = options?.similarityThreshold ?? this.config.similarityThreshold;
 
-        const { data, error } = await this.client.rpc("match_autodocs", {
+        const { data, error } = await this.client.rpc("match_code", {
             query_embedding: embedding,
             match_count: matchCount,
             similarity_threshold: similarityThreshold,
         });
 
         if (error) {
-            this.logger.error(`Failed to execute match_autodocs RPC: ${error.message}`);
-            throw new Error(`Failed to execute match_autodocs RPC: ${error.message}`);
+            this.logger.error(`Failed to execute match_code RPC: ${error.message}`);
+            throw new Error(`Failed to execute match_code RPC: ${error.message}`);
         }
 
         return ((data ?? []) as SupabaseDocRow[]).map((row) => ({

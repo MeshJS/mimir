@@ -1,5 +1,5 @@
 {
-  "name": "mimir-autodocs",
+  "name": "mimir-code-rag",
   "version": "1.0.0",
   "description": "Auto-documentation RAG for TypeScript projects - extracts code entities via AST parsing and generates contextual embeddings",
   "main": "dist/index.js",

@@ -18,7 +18,7 @@ export function configureLogger(config: LoggingConfig) {
             };
         } catch {
             console.warn(
-                '[mimir-autodocs] "pino-pretty" is not installed. Falling back to JSON logs. Install it or set logging.pretty to false.'
+                '[mimir-code-rag] "pino-pretty" is not installed. Falling back to JSON logs. Install it or set logging.pretty to false.'
             );
         }
     }

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 function generateApiKey(): string {
-    return `autodocs_${crypto.randomBytes(32).toString("hex")}`;
+    return `coderag_${crypto.randomBytes(32).toString("hex")}`;
 }
 
 const apiKey = generateApiKey();

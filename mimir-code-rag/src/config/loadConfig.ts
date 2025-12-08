@@ -38,7 +38,7 @@ export function loadConfig(): AppConfig {
         supabase: {
             url: requiredEnv("SUPABASE_URL"),
             serviceRoleKey: requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
-            table: optionalEnv("SUPABASE_TABLE", "autodocs_chunks") ?? "autodocs_chunks",
+            table: optionalEnv("SUPABASE_TABLE", "code_chunks") ?? "code_chunks",
             similarityThreshold: parseNumber(optionalEnv("SIMILARITY_THRESHOLD"), 0.5),
             matchCount: parseNumber(optionalEnv("MATCH_COUNT"), 10),
         },

@@ -1,8 +1,8 @@
 -- Enable the pgvector extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Create the autodocs_chunks table
-CREATE TABLE IF NOT EXISTS autodocs_chunks (
+-- Create the code_chunks table
+CREATE TABLE IF NOT EXISTS code_chunks (
     id BIGSERIAL PRIMARY KEY,
     content TEXT NOT NULL,
     contextual_text TEXT NOT NULL,
@@ -19,16 +19,16 @@ CREATE TABLE IF NOT EXISTS autodocs_chunks (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     
     -- Unique constraint on filepath + chunk_id for upsert
-    CONSTRAINT autodocs_chunks_filepath_chunk_id_key UNIQUE (filepath, chunk_id)
+    CONSTRAINT code_chunks_filepath_chunk_id_key UNIQUE (filepath, chunk_id)
 );
 
 -- Create indexes for efficient querying
-CREATE INDEX IF NOT EXISTS idx_autodocs_chunks_checksum ON autodocs_chunks(checksum);
-CREATE INDEX IF NOT EXISTS idx_autodocs_chunks_filepath ON autodocs_chunks(filepath);
-CREATE INDEX IF NOT EXISTS idx_autodocs_chunks_entity_type ON autodocs_chunks(entity_type);
+CREATE INDEX IF NOT EXISTS idx_code_chunks_checksum ON code_chunks(checksum);
+CREATE INDEX IF NOT EXISTS idx_code_chunks_filepath ON code_chunks(filepath);
+CREATE INDEX IF NOT EXISTS idx_code_chunks_entity_type ON code_chunks(entity_type);
 
 -- Create the vector search function
-CREATE OR REPLACE FUNCTION match_autodocs(
+CREATE OR REPLACE FUNCTION match_code(
     query_embedding vector(3072),
     match_count INT DEFAULT 10,
     similarity_threshold FLOAT DEFAULT 0.5
@@ -66,7 +66,7 @@ BEGIN
         ac.start_line,
         ac.end_line,
         1 - (ac.embedding <=> query_embedding) AS similarity
-    FROM autodocs_chunks ac
+    FROM code_chunks ac
     WHERE 1 - (ac.embedding <=> query_embedding) > similarity_threshold
     ORDER BY ac.embedding <=> query_embedding
     LIMIT match_count;
@@ -74,7 +74,7 @@ END;
 $$;
 
 -- Create trigger to update updated_at timestamp
-CREATE OR REPLACE FUNCTION update_autodocs_updated_at()
+CREATE OR REPLACE FUNCTION update_coderag_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -82,14 +82,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS autodocs_chunks_updated_at ON autodocs_chunks;
-CREATE TRIGGER autodocs_chunks_updated_at
-    BEFORE UPDATE ON autodocs_chunks
+DROP TRIGGER IF EXISTS code_chunks_updated_at ON code_chunks;
+CREATE TRIGGER code_chunks_updated_at
+    BEFORE UPDATE ON code_chunks
     FOR EACH ROW
-    EXECUTE FUNCTION update_autodocs_updated_at();
+    EXECUTE FUNCTION update_coderag_updated_at();
 
 -- Create HNSW index for faster vector similarity search (optional, for large datasets)
 -- Uncomment if needed:
--- CREATE INDEX IF NOT EXISTS idx_autodocs_chunks_embedding ON autodocs_chunks 
+-- CREATE INDEX IF NOT EXISTS idx_code_chunks_embedding ON code_chunks 
 -- USING hnsw (embedding vector_cosine_ops);
 
