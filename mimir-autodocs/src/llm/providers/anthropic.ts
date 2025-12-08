@@ -43,7 +43,7 @@ export class AnthropicChatProvider extends BaseChatProvider {
             system: systemPrompt,
             prompt: userPrompt,
             temperature: this.config.temperature,
-            maxTokens: this.config.maxOutputTokens,
+            maxOutputTokens: this.config.maxOutputTokens,
         });
 
         return text;
