@@ -3,8 +3,10 @@ import pLimit from "p-limit";
 import pRetry from "p-retry";
 import { ChatModelConfig, EmbeddingModelConfig } from "../config/types";
 import { batchChunks } from "../utils/batchChunks";
-import type { ChatProvider, EmbedOptions, EmbeddingProvider, EntityContextInput } from "./types";
+import type { ChatProvider, EmbedOptions, EmbeddingProvider, EntityContextInput, GenerateAnswerOptions, StructuredAnswerResult } from "./types";
 import { buildBatchContextPrompt, getEntityContextSystemPrompt, parseNumberedResponse } from "./prompts";
+import { buildPromptMessages, answerWithSourcesSchema } from "./prompt";
+import { generateObject, streamObject } from "ai";
 import Bottleneck from "bottleneck";
 import { Logger } from "pino";
 import { countTokensInBatch, countTokens } from "../utils/tokenEncoder";
@@ -188,6 +190,31 @@ export abstract class BaseChatProvider implements ChatProvider {
         return allContexts;
     }
 
+    async generateAnswer(options: GenerateAnswerOptions & { stream?: false }): Promise<StructuredAnswerResult>;
+    async generateAnswer(options: GenerateAnswerOptions & { stream: true }): Promise<AsyncIterable<StructuredAnswerResult>>;
+    async generateAnswer(options: GenerateAnswerOptions): Promise<StructuredAnswerResult | AsyncIterable<StructuredAnswerResult>> {
+        const tokens = this.estimateChatTokens(options);
+        return this.scheduleWithRateLimits(tokens, () => this.completeAnswer(options), {
+            logPrefix: `${this.config.provider}:chat`,
+            signal: options.signal,
+        });
+    }
+
+    protected estimateChatTokens(options: GenerateAnswerOptions): number {
+        const model = this.config.model;
+        let tokens = countTokens(options.prompt, model);
+
+        if (options.systemPrompt) {
+            tokens += countTokens(options.systemPrompt, model);
+        }
+
+        tokens += options.context.reduce((sum, chunk) => sum + countTokens(chunk.contextualText, model), 0);
+        tokens += options.maxTokens ?? this.config.maxOutputTokens ?? 2000;
+        return tokens;
+    }
+
+    protected abstract completeAnswer(options: GenerateAnswerOptions): Promise<StructuredAnswerResult | AsyncIterable<StructuredAnswerResult>>;
+
     protected estimateTokens(systemPrompt: string, userPrompt: string): number {
         const model = this.config.model;
         let tokens = countTokens(systemPrompt, model);
@@ -197,6 +224,7 @@ export abstract class BaseChatProvider implements ChatProvider {
     }
 
     protected abstract complete(systemPrompt: string, userPrompt: string): Promise<string>;
+    protected abstract completeAnswer(options: GenerateAnswerOptions): Promise<StructuredAnswerResult | AsyncIterable<StructuredAnswerResult>>;
 
     private async scheduleWithRateLimits<T>(
         tokens: number,

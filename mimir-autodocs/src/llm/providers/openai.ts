@@ -1,10 +1,11 @@
 import { Logger } from "pino";
 import { BaseChatProvider, BaseEmbeddingProvider } from "../base";
 import type { ChatModelConfig, EmbeddingModelConfig } from "../../config/types";
-import type { EmbedOptions } from "../types";
+import type { EmbedOptions, GenerateAnswerOptions, StructuredAnswerResult } from "../types";
 import { createOpenAI } from "@ai-sdk/openai";
-import { embedMany, generateText } from "ai";
+import { embedMany, generateText, generateObject, streamObject } from "ai";
 import { resolveBaseUrl, mergeLimits } from "../../utils/providerUtils";
+import { buildPromptMessages, answerWithSourcesSchema } from "../prompt";
 
 const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1/";
 
@@ -89,6 +90,34 @@ export class OpenAIChatProvider extends BaseChatProvider {
         });
 
         return text;
+    }
+
+    protected async completeAnswer(options: GenerateAnswerOptions): Promise<StructuredAnswerResult | AsyncIterable<StructuredAnswerResult>> {
+        const { system, user } = buildPromptMessages(options);
+        const model = this.sdk(this.config.model);
+
+        const baseOptions = {
+            model,
+            system,
+            prompt: user,
+            temperature: options.temperature ?? this.config.temperature,
+            maxOutputTokens: options.maxTokens ?? this.config.maxOutputTokens,
+            abortSignal: options.signal,
+        };
+
+        if (options.stream) {
+            const { partialObjectStream } = streamObject({
+                ...baseOptions,
+                schema: answerWithSourcesSchema,
+            });
+            return partialObjectStream as AsyncIterable<StructuredAnswerResult>;
+        }
+
+        const { object } = await generateObject({
+            ...baseOptions,
+            schema: answerWithSourcesSchema,
+        });
+        return object as StructuredAnswerResult;
     }
 }
 
