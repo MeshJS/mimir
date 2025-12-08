@@ -13,6 +13,7 @@ import {
 } from "../github/utils";
 import { getLogger } from "../utils/logger";
 import pLimit from "p-limit";
+import { downloadGithubTypescriptFiles, GithubTypescriptDocument } from "./typescript";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const RAW_GITHUB_BASE = "https://raw.githubusercontent.com";
@@ -45,6 +46,18 @@ interface GithubTreeEntry {
 }
 
 export interface GithubMdxDocument {
+    path: string;
+    relativePath: string;
+    content: string;
+    sha: string;
+    size: number;
+    sourceUrl: string;
+}
+
+export type GithubDocumentType = "mdx" | "typescript";
+
+export interface GithubDocument {
+    type: GithubDocumentType;
     path: string;
     relativePath: string;
     content: string;
@@ -360,4 +373,39 @@ async function resetOutputDirectory(directory: string, logger: Logger): Promise<
     }
 
     await fs.mkdir(directory, { recursive: true });
+}
+
+/**
+ * Downloads both MDX and TypeScript files from a GitHub repository
+ * Returns a unified array of documents with type information
+ */
+export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubDocument[]> {
+    const logger = getLogger();
+    const documents: GithubDocument[] = [];
+
+    // Download MDX files
+    try {
+        const mdxFiles = await downloadGithubMdxFiles(appConfig);
+        documents.push(...mdxFiles.map((doc) => ({
+            type: "mdx" as const,
+            ...doc,
+        })));
+        logger.info(`Found ${mdxFiles.length} MDX file${mdxFiles.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+        logger.warn({ err: error }, "Failed to download MDX files; continuing with TypeScript files only.");
+    }
+
+    // Download TypeScript files
+    try {
+        const tsFiles = await downloadGithubTypescriptFiles(appConfig);
+        documents.push(...tsFiles.map((doc) => ({
+            type: "typescript" as const,
+            ...doc,
+        })));
+        logger.info(`Found ${tsFiles.length} TypeScript file${tsFiles.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+        logger.warn({ err: error }, "Failed to download TypeScript files; continuing with MDX files only.");
+    }
+
+    return documents;
 }
