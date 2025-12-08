@@ -1,6 +1,6 @@
 # Mimir
 
-A comprehensive documentation RAG (Retrieval Augmented Generation) system with MCP (Model Context Protocol) integration. Mimir ingests documentation from GitHub repositories into a Supabase vector store and provides powerful querying capabilities through both REST API and MCP protocol.
+A comprehensive **contextual RAG** (Retrieval Augmented Generation) system with MCP (Model Context Protocol) integration for both **documentation and TypeScript codebases**. Mimir ingests documentation and TypeScript code from GitHub repositories into a Supabase vector store and provides powerful querying capabilities through both REST API and MCP protocol. Unlike basic RAG, contextual RAG provides rich context around each code entity, including full file content, imports, and surrounding code.
 
 ## Projects
 
@@ -8,16 +8,19 @@ This repository contains two main components:
 
 ### [mimir-rag](./mimir-rag)
 
-The core RAG server that handles documentation ingestion and querying.
+The core RAG server that handles ingestion and querying of both **documentation (MDX)** and **TypeScript codebases**.
 
 **Features:**
-- Ingests documentation from GitHub repositories into Supabase vector store
+- Ingests documentation and TypeScript code from GitHub repositories into Supabase vector store
+- Supports separate repositories for code and documentation
+- Automatically extracts TypeScript entities (functions, classes, interfaces, exported const functions)
 - Supports multiple LLM providers (OpenAI, Anthropic, Google, Mistral)
 - OpenAI-compatible chat completions endpoint (`/v1/chat/completions`)
 - MCP endpoint for semantic document search (`/mcp/ask`)
-- GitHub webhook integration for automatic re-ingestion
+- GitHub webhook integration for automatic ingestion on new code/MDX updates in repository
 - Streaming responses support (OpenAI-compatible and custom SSE)
 - Configurable chunking and embedding strategies
+- Flexible parser configuration (exclude test files, control entity extraction)
 
 **Quick Start:**
 ```bash
@@ -87,7 +90,7 @@ See the [mimir-mcp README](./mimir-mcp/README.md) for detailed setup instruction
 ┌─────────────────────┐       ┌─────────────────────┐
 │   mimir-mcp         │◄──────┤  AI Assistant       │
 │   (MCP Server)      │       │  - Claude Code      │
-└─────────────────────┘       │  - Cline            │
+└─────────────────────┘       │  - VSCode           │
                               │  - Claude Desktop   │
                               └─────────────────────┘
 ```
@@ -95,10 +98,12 @@ See the [mimir-mcp README](./mimir-mcp/README.md) for detailed setup instruction
 ## Workflow
 
 1. **Ingestion Phase:**
-   - mimir-rag fetches documentation from configured GitHub repository
-   - Documents are chunked into smaller segments
+   - mimir-rag fetches documentation (MDX) and TypeScript code from configured GitHub repository(ies)
+   - TypeScript files are parsed to extract entities (functions, classes, interfaces, exported const functions)
+   - **Contextual RAG**: Each entity is enriched with surrounding context - full file content, imports, parent classes, and related code
+   - Documents are chunked into smaller segments with rich contextual information
    - Chunks are embedded using your chosen LLM provider
-   - Embeddings are stored in Supabase vector database
+   - Embeddings are stored in Supabase vector database with source URLs pointing to GitHub
 
 2. **Query Phase (via MCP):**
    - User asks a question in their AI assistant
@@ -116,18 +121,21 @@ See the [mimir-mcp README](./mimir-mcp/README.md) for detailed setup instruction
 
 ## Use Cases
 
+- **AI-Powered Code Assistant**: Let your AI coding assistant query your TypeScript codebase in real-time - find functions, classes, and understand code structure
 - **AI-Powered Documentation Assistant**: Let your AI coding assistant query your docs in real-time
+- **Codebase Understanding**: Index your entire TypeScript project - functions, classes, interfaces, and exported const functions
 - **Internal Knowledge Base**: Index internal wikis, API docs, or technical documentation
 - **Customer Support**: Provide accurate, context-aware answers from your documentation
-- **Developer Onboarding**: Help new developers quickly find information in your codebase docs
+- **Developer Onboarding**: Help new developers quickly find information in your codebase and documentation
 - **API Documentation**: Make API documentation instantly queryable
+- **Code Reference**: Ask questions about your codebase and get answers with direct links to GitHub source code
 
 ## Requirements
 
 - **Node.js**: 20 or later
 - **Supabase**: Vector store for embeddings and document storage
 - **LLM Provider**: API key for OpenAI, Anthropic, Google, or Mistral
-- **GitHub**: Repository with documentation to ingest (optional)
+- **GitHub**: Repository with documentation (MDX) and/or TypeScript code to ingest (optional)
 
 ## Getting Started
 

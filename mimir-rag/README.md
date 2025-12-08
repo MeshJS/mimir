@@ -1,6 +1,6 @@
 # mimir-rag
 
-Utility CLI + API that ingests docs into Supabase and exposes OpenAI-compatible chat completions, MCP endpoints, and ingestion endpoints.
+Utility CLI + API that ingests **documentation (MDX) and TypeScript codebases** into Supabase using **contextual RAG** and exposes OpenAI-compatible chat completions, MCP endpoints, and ingestion endpoints. Perfect for making your entire codebase and documentation queryable by AI assistants with rich contextual understanding.
 
 ## Quick Start
 
@@ -138,20 +138,86 @@ All configuration is managed through environment variables in the `.env` file. S
 Key configuration variables include:
 
 - **Server**: `MIMIR_SERVER_API_KEY` (required), `MIMIR_SERVER_GITHUB_WEBHOOK_SECRET`, `MIMIR_SERVER_FALLBACK_INGEST_INTERVAL_MINUTES`
-- **Supabase**: `MIMIR_SUPABASE_URL` (required), `MIMIR_SUPABASE_SERVICE_ROLE_KEY` (required), `MIMIR_SUPABASE_TABLE`
-- **GitHub**: `MIMIR_GITHUB_URL`, `MIMIR_GITHUB_TOKEN`, `MIMIR_GITHUB_DIRECTORY`, `MIMIR_GITHUB_BRANCH`
+- **Supabase**: `MIMIR_SUPABASE_URL` (required), `MIMIR_SUPABASE_SERVICE_ROLE_KEY` (required), `MIMIR_SUPABASE_TABLE` (optional, default: "docs")
+- **GitHub**: 
+  - `MIMIR_GITHUB_URL` - Main repository URL (fallback if separate repos not set)
+  - `MIMIR_GITHUB_CODE_URL` - Separate repository for TypeScript code (optional)
+  - `MIMIR_GITHUB_DOCS_URL` - Separate repository for MDX documentation (optional)
+  - `MIMIR_GITHUB_TOKEN`, `MIMIR_GITHUB_DIRECTORY`, `MIMIR_GITHUB_BRANCH`
+  - `MIMIR_GITHUB_CODE_DIRECTORY`, `MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES` - Code repo specific settings
+  - `MIMIR_GITHUB_DOCS_DIRECTORY`, `MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES` - Docs repo specific settings
+- **Parser**: 
+  - `MIMIR_EXTRACT_VARIABLES` - Extract top-level variables (default: false)
+  - `MIMIR_EXTRACT_METHODS` - Extract class methods (default: true)
+  - `MIMIR_EXCLUDE_PATTERNS` - Comma-separated patterns to exclude (e.g., "*.test.ts,test/,__tests__/")
 - **LLM Embedding**: `MIMIR_LLM_EMBEDDING_PROVIDER`, `MIMIR_LLM_EMBEDDING_MODEL`, `MIMIR_LLM_EMBEDDING_API_KEY`
 - **LLM Chat**: `MIMIR_LLM_CHAT_PROVIDER`, `MIMIR_LLM_CHAT_MODEL`, `MIMIR_LLM_CHAT_API_KEY`, `MIMIR_LLM_CHAT_TEMPERATURE`
+- **Documentation**: `MIMIR_DOCS_BASE_URL`, `MIMIR_DOCS_CONTENT_PATH` - For generating docs URLs
 
 ### LLM Providers
 
 `MIMIR_LLM_EMBEDDING_PROVIDER` supports `openai`, `google`, and `mistral`. The chat provider (`MIMIR_LLM_CHAT_PROVIDER`) can be set independently to `openai`, `google`, `anthropic`, or `mistral`, letting you mix providers (e.g., OpenAI embeddings with Mistral chat completions). Provide the appropriate API key/endpoint per provider. Anthropic currently lacks an embeddings API, so embeddings still need to come from OpenAI, Google, or Mistral.
 
+### Separate Code and Documentation Repositories
+
+You can configure separate repositories for TypeScript code and MDX documentation:
+
+```bash
+# Main repository (fallback)
+MIMIR_GITHUB_URL=https://github.com/user/main-repo
+
+# Separate code repository
+MIMIR_GITHUB_CODE_URL=https://github.com/user/code-repo
+MIMIR_GITHUB_CODE_DIRECTORY=src
+MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES=src,lib
+
+# Separate documentation repository
+MIMIR_GITHUB_DOCS_URL=https://github.com/user/docs-repo
+MIMIR_GITHUB_DOCS_DIRECTORY=docs
+MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES=docs,guides
+```
+
+When configured, TypeScript files will be ingested from the code repository and MDX files from the docs repository. Source URLs for TypeScript files will automatically use the code repository URL.
+
+### Parser Configuration
+
+Control what gets extracted from your codebase:
+
+- **`MIMIR_EXTRACT_VARIABLES`** (default: `false`): Extract top-level variable declarations. Note: Exported `const` functions are always extracted regardless of this setting.
+- **`MIMIR_EXTRACT_METHODS`** (default: `true`): Extract class methods as separate entities.
+- **`MIMIR_EXCLUDE_PATTERNS`**: Comma-separated list of patterns to exclude:
+  - File patterns: `*.test.ts`, `*.spec.ts`
+  - Directory patterns: `test/`, `__tests__/`, `tests/`
+  
+  Example: `MIMIR_EXCLUDE_PATTERNS=*.test.ts,*.spec.ts,test/,__tests__/,tests/`
+
+### TypeScript Entity Extraction
+
+mimir-rag automatically extracts and indexes TypeScript entities from your codebase:
+
+- **Functions**: `export function myFunction() {}`
+- **Exported Const Functions**: `export const myFunction = () => {}` (always extracted)
+- **Classes**: `export class MyClass {}`
+- **Interfaces**: `export interface MyInterface {}`
+- **Types**: `export type MyType = ...`
+- **Enums**: `export enum MyEnum {}`
+- **Methods**: Class methods (if `MIMIR_EXTRACT_METHODS=true`)
+
+Each entity is stored as a separate chunk with **rich contextual information**:
+- Full code snippet
+- **Contextual RAG**: Surrounding file content, imports, and parent class context
+- JSDoc comments (if present)
+- Parameters and return types
+- Line numbers for source linking
+- GitHub URL for direct code access
+
+This contextual RAG approach allows the AI to understand not just the entity itself, but also how it fits into the larger codebase - what it imports, what it's part of, and how it's used. This enables more accurate and contextually-aware answers with direct links to source code.
+
 ## API Endpoints
 
 ### POST /v1/chat/completions
 
-OpenAI-compatible chat completions endpoint that queries your documentation with RAG. Requires API key authentication.
+OpenAI-compatible chat completions endpoint that queries your documentation and codebase using contextual RAG. Requires API key authentication.
 
 **Headers:**
 - `x-api-key: <MIMIR_SERVER_API_KEY>` or `Authorization: Bearer <MIMIR_SERVER_API_KEY>`
@@ -209,7 +275,7 @@ Semantic search endpoint via MCP (Model Context Protocol) that returns matching 
 }
 ```
 
-**Note:** This endpoint performs semantic search using OpenAI embeddings and returns document chunks with their full content. The calling AI assistant can then synthesize answers from the retrieved content, avoiding additional LLM API calls on the server side.
+**Note:** This endpoint performs contextual RAG - semantic search using OpenAI embeddings that returns document chunks with their full content and surrounding context. The calling AI assistant can then synthesize answers from the retrieved content, avoiding additional LLM API calls on the server side.
 
 ### POST /ingest
 
