@@ -117,7 +117,8 @@ export async function askAi(
                     // Map sources from matches (which have entityType, startLine, endLine)
                     collectedSources.length = 0;
                     collectedSources.push(...chunk.sources.map((src) => {
-                        const match = sourceMap.get(`${src.filepath}:${src.chunkTitle}`);
+                        // Find matching chunk by filepath and chunkTitle
+                        const match = matches.find(m => m.filepath === src.filepath && m.chunkTitle === src.chunkTitle);
                         return {
                             filepath: src.filepath,
                             chunkTitle: src.chunkTitle,
@@ -145,9 +146,9 @@ export async function askAi(
     } as GenerateAnswerOptions & { stream?: false });
 
     // Map sources from matches to include entity metadata
-    const sourceMap = new Map(matches.map(m => [`${m.filepath}:${m.chunkId}`, m]));
     const sources: AskAiSource[] = result.sources.map((src) => {
-        const match = sourceMap.get(`${src.filepath}:${src.chunkTitle}`);
+        // Find matching chunk by filepath and chunkTitle
+        const match = matches.find(m => m.filepath === src.filepath && m.chunkTitle === src.chunkTitle);
         return {
             filepath: src.filepath,
             chunkTitle: src.chunkTitle,
