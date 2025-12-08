@@ -4,7 +4,7 @@ import type { LLMClientBundle } from "../llm/types";
 import { getLogger } from "../utils/logger";
 import { downloadGithubMdxFiles, GithubMdxDocument } from "./github";
 import { chunkMdxFile, enforceChunkTokenLimit, MdxChunk } from "./chunker";
-import type { SupabaseVectorStore, ExistingChunkInfo } from "../supabase/client";
+import type { SupabaseVectorStore } from "../supabase/client";
 import type { DocumentChunk } from "../supabase/types";
 import { resolveEmbeddingInputTokenLimit } from "../llm/modelLimits";
 import { resolveSourceLinks } from "../utils/sourceLinks";
@@ -18,17 +18,24 @@ interface PendingEmbeddingChunk {
     contextualText: string;
 }
 
-interface ChunkDiffResult {
-    reordered: Array<{ id: number; chunkId: number }>;
-    newOrUpdated: Array<{ chunk: MdxChunk; index: number }>;
-    deletedIds: number[];
+/** Target location for a chunk in the new state */
+interface TargetChunkLocation {
+    filepath: string;
+    chunkId: number;
+    chunk: MdxChunk;
 }
+
+/** Classification of how a chunk should be handled */
+type ChunkClassification =
+    | { type: "unchanged"; existingId: number }
+    | { type: "moved"; existingId: number; newFilepath: string; newChunkId: number }
+    | { type: "new"; chunk: MdxChunk; filepath: string; chunkId: number };
 
 export interface IngestionPipelineStats {
     processedDocuments: number;
     skippedDocuments: number;
     upsertedChunks: number;
-    reorderedChunks: number;
+    movedChunks: number;
     deletedChunks: number;
 }
 
@@ -55,16 +62,16 @@ export async function runIngestionPipeline(
         processedDocuments: 0,
         skippedDocuments: 0,
         upsertedChunks: 0,
-        reorderedChunks: 0,
+        movedChunks: 0,
         deletedChunks: 0,
     };
 
-    const pendingEmbeddings: PendingEmbeddingChunk[] = [];
-    const pendingReorders: Array<{ id: number; chunkId: number }> = [];
-    const pendingDeletes: number[] = [];
-    const contextTasks: Promise<void>[] = [];
-
     ingestionLogger.info(`Processing ${documents.length} MDX document${documents.length === 1 ? "" : "s"}.`);
+
+    // Collect target state from all documents: checksum -> target location
+    const targetState = new Map<string, TargetChunkLocation>();
+    const allChecksums: string[] = [];
+    const documentChunksMap = new Map<string, MdxChunk[]>(); // filepath -> chunks
 
     for (const document of documents) {
         const filepath = document.relativePath || document.path;
@@ -92,45 +99,179 @@ export async function runIngestionPipeline(
         }
 
         stats.processedDocuments += 1;
+        documentChunksMap.set(filepath, preparedChunks);
 
-        const existing = await store.fetchExistingChunks(filepath);
-        const diff = diffChunks(preparedChunks, existing);
+        preparedChunks.forEach((chunk, index) => {
+            // If same checksum appears in multiple files, the last one wins
+            // This is expected behavior - content deduplication
+            targetState.set(chunk.checksum, {
+                filepath,
+                chunkId: index,
+                chunk,
+            });
+            allChecksums.push(chunk.checksum);
+        });
+    }
 
-        if (diff.reordered.length > 0) {
-            pendingReorders.push(...diff.reordered);
-            stats.reorderedChunks += diff.reordered.length;
+    if (targetState.size === 0) {
+        ingestionLogger.info("No chunks to process. Ingestion pipeline complete.");
+        return { documents, stats };
+    }
+
+    // Fetch existing chunks by checksums globally
+    const uniqueChecksums = [...new Set(allChecksums)];
+    const existingByChecksum = await store.fetchChunksByChecksums(uniqueChecksums);
+
+    ingestionLogger.info(
+        `Found ${existingByChecksum.size} existing checksum${existingByChecksum.size === 1 ? "" : "s"} in the database.`
+    );
+
+    // Classify each target chunk: can we reuse an existing DB row, or do we need a new one?
+    const classifications: ChunkClassification[] = [];
+    
+    // When the same content (checksum) appears in multiple places, we might have multiple
+    // DB rows with that checksum. This set tracks which DB row IDs we've already decided
+    // to reuse, so we don't accidentally assign the same DB row to two different targets.
+    const alreadyAssignedDbIds = new Set<number>();
+
+    for (const [checksum, target] of targetState.entries()) {
+        const dbChunksWithSameChecksum = existingByChecksum.get(checksum);
+
+        if (dbChunksWithSameChecksum && dbChunksWithSameChecksum.length > 0) {
+            // We found existing DB rows with matching content. Try to reuse one.
+            
+            // First, check if any DB row is already at the exact target location
+            const alreadyInPlace = dbChunksWithSameChecksum.find(
+                (dbChunk) => 
+                    dbChunk.filepath === target.filepath && 
+                    dbChunk.chunkId === target.chunkId &&
+                    !alreadyAssignedDbIds.has(dbChunk.id)
+            );
+
+            if (alreadyInPlace) {
+                // This DB row is already where we want it - no changes needed
+                classifications.push({ type: "unchanged", existingId: alreadyInPlace.id });
+                alreadyAssignedDbIds.add(alreadyInPlace.id);
+            } else {
+                // No DB row at the target location. Find any unassigned DB row we can move there.
+                const reusableDbChunk = dbChunksWithSameChecksum.find(
+                    (dbChunk) => !alreadyAssignedDbIds.has(dbChunk.id)
+                );
+
+                if (reusableDbChunk) {
+                    // Move this existing DB row to the new location
+                    classifications.push({
+                        type: "moved",
+                        existingId: reusableDbChunk.id,
+                        newFilepath: target.filepath,
+                        newChunkId: target.chunkId,
+                    });
+                    alreadyAssignedDbIds.add(reusableDbChunk.id);
+                } else {
+                    // All DB rows with this checksum are already assigned to other targets.
+                    // We need to create a new row (and generate a new embedding).
+                    classifications.push({
+                        type: "new",
+                        chunk: target.chunk,
+                        filepath: target.filepath,
+                        chunkId: target.chunkId,
+                    });
+                }
+            }
+        } else {
+            // No existing DB row with this checksum - create new
+            classifications.push({
+                type: "new",
+                chunk: target.chunk,
+                filepath: target.filepath,
+                chunkId: target.chunkId,
+            });
         }
+    }
 
-        if (diff.deletedIds.length > 0) {
-            pendingDeletes.push(...diff.deletedIds);
-            stats.deletedChunks += diff.deletedIds.length;
-        }
+    // Find orphaned chunks (checksums not in target state)
+    const activeChecksums = new Set(targetState.keys());
+    const orphanedIds = await store.findOrphanedChunkIds(activeChecksums);
 
-        if (diff.newOrUpdated.length === 0) {
-            fileLogger.debug("All chunks unchanged; no LLM work required.");
+    // Move chunks to new locations (two-phase to avoid conflicts)
+    const movedChunks = classifications.filter(
+        (c): c is Extract<ChunkClassification, { type: "moved" }> => c.type === "moved"
+    );
+
+    if (movedChunks.length > 0) {
+        ingestionLogger.info(`Moving ${movedChunks.length} chunk${movedChunks.length === 1 ? "" : "s"} to new locations.`);
+        await store.moveChunksAtomic(
+            movedChunks.map((c) => ({
+                id: c.existingId,
+                filepath: c.newFilepath,
+                chunkId: c.newChunkId,
+            }))
+        );
+        stats.movedChunks = movedChunks.length;
+    }
+
+    // Delete orphaned chunks
+    if (orphanedIds.length > 0) {
+        ingestionLogger.info(`Deleting ${orphanedIds.length} orphaned chunk${orphanedIds.length === 1 ? "" : "s"}.`);
+        await store.deleteChunksByIds(orphanedIds);
+        stats.deletedChunks = orphanedIds.length;
+    }
+
+    // Embed and insert new chunks
+    const newChunks = classifications.filter(
+        (c): c is Extract<ChunkClassification, { type: "new" }> => c.type === "new"
+    );
+
+    if (newChunks.length === 0) {
+        ingestionLogger.info("No new chunks required embeddings. Ingestion pipeline complete.");
+        return { documents, stats };
+    }
+
+    // Group new chunks by filepath for context generation
+    const newChunksByFilepath = new Map<string, Array<{ chunk: MdxChunk; chunkId: number }>>();
+    for (const c of newChunks) {
+        const existing = newChunksByFilepath.get(c.filepath) ?? [];
+        existing.push({ chunk: c.chunk, chunkId: c.chunkId });
+        newChunksByFilepath.set(c.filepath, existing);
+    }
+
+    const pendingEmbeddings: PendingEmbeddingChunk[] = [];
+    const contextTasks: Promise<void>[] = [];
+
+    for (const [filepath, chunks] of newChunksByFilepath.entries()) {
+        const document = documents.find(
+            (d) => (d.relativePath || d.path) === filepath
+        );
+
+        if (!document) {
+            ingestionLogger.warn(`Document for filepath ${filepath} not found. Skipping context generation.`);
             continue;
         }
 
+        const fileLogger = typeof ingestionLogger.child === "function"
+            ? ingestionLogger.child({ file: filepath })
+            : ingestionLogger;
+
         fileLogger.info(
-            `Generating context for ${diff.newOrUpdated.length} new or modified chunk${diff.newOrUpdated.length === 1 ? "" : "s"}.`
+            `Generating context for ${chunks.length} new chunk${chunks.length === 1 ? "" : "s"}.`
         );
 
-        const chunkContents = diff.newOrUpdated.map((entry) => entry.chunk.chunkContent);
+        const chunkContents = chunks.map((entry) => entry.chunk.chunkContent);
         const contextTask = llm.chat
             .generateFileChunkContexts(chunkContents, document.content)
             .then((contexts) => {
-                if (contexts.length !== diff.newOrUpdated.length) {
+                if (contexts.length !== chunks.length) {
                     throw new Error(
-                        `Context generation returned ${contexts.length} entries for ${diff.newOrUpdated.length} chunks in ${filepath}.`
+                        `Context generation returned ${contexts.length} entries for ${chunks.length} chunks in ${filepath}.`
                     );
                 }
 
-                diff.newOrUpdated.forEach((entry, index) => {
+                chunks.forEach((entry, index) => {
                     const contextHeader = contexts[index]?.trim() ?? "";
                     const contextualText = `${contextHeader}---${entry.chunk.chunkContent}`;
                     pendingEmbeddings.push({
                         filepath,
-                        chunkId: entry.index,
+                        chunkId: entry.chunkId,
                         chunkTitle: entry.chunk.chunkTitle,
                         checksum: entry.chunk.checksum,
                         content: entry.chunk.chunkContent,
@@ -147,29 +288,9 @@ export async function runIngestionPipeline(
             });
 
         contextTasks.push(contextTask);
-
-        stats.upsertedChunks += diff.newOrUpdated.length;
     }
 
     await Promise.all(contextTasks);
-
-    if (pendingReorders.length > 0) {
-        ingestionLogger.info(`Reordering ${pendingReorders.length} chunk${pendingReorders.length === 1 ? "" : "s"}.`);
-        await store.updateChunkOrders(pendingReorders);
-    }
-
-    if (pendingDeletes.length > 0) {
-        ingestionLogger.info(`Deleting ${pendingDeletes.length} stale chunk${pendingDeletes.length === 1 ? "" : "s"}.`);
-        await store.deleteChunksByIds(pendingDeletes);
-    }
-
-    if (pendingEmbeddings.length === 0) {
-        ingestionLogger.info("No new or updated chunks required embeddings. Ingestion pipeline complete.");
-        return {
-            documents,
-            stats,
-        };
-    }
 
     ingestionLogger.info(`Embedding ${pendingEmbeddings.length} chunk${pendingEmbeddings.length === 1 ? "" : "s"} using ${llm.embedding.config.provider}.`);
 
@@ -200,6 +321,7 @@ export async function runIngestionPipeline(
     });
 
     await store.upsertChunks(upsertPayload);
+    stats.upsertedChunks = pendingEmbeddings.length;
 
     ingestionLogger.info("Ingestion pipeline completed successfully.");
 
@@ -209,53 +331,3 @@ export async function runIngestionPipeline(
     };
 }
 
-function diffChunks(chunks: MdxChunk[], existing: Map<number, ExistingChunkInfo>): ChunkDiffResult {
-    const checksumBuckets = new Map<string, Array<{ chunkId: number; info: ExistingChunkInfo }>>();
-    const matchedIds = new Set<number>();
-
-    for (const [chunkId, info] of existing.entries()) {
-        const bucket = checksumBuckets.get(info.checksum);
-        if (bucket) {
-            bucket.push({ chunkId, info });
-        } else {
-            checksumBuckets.set(info.checksum, [{ chunkId, info }]);
-        }
-    }
-
-    const reordered: Array<{ id: number; chunkId: number }> = [];
-    const newOrUpdated: Array<{ chunk: MdxChunk; index: number }> = [];
-
-    chunks.forEach((chunk, index) => {
-        const bucket = checksumBuckets.get(chunk.checksum);
-
-        if (bucket && bucket.length > 0) {
-            const match = bucket.shift()!;
-            if (bucket.length === 0) {
-                checksumBuckets.delete(chunk.checksum);
-            }
-
-            matchedIds.add(match.info.id);
-
-            if (match.chunkId !== index) {
-                reordered.push({ id: match.info.id, chunkId: index });
-            }
-
-            return;
-        }
-
-        newOrUpdated.push({ chunk, index });
-    });
-
-    const deletedIds: number[] = [];
-    existing.forEach((info) => {
-        if (!matchedIds.has(info.id)) {
-            deletedIds.push(info.id);
-        }
-    });
-
-    return {
-        reordered,
-        newOrUpdated,
-        deletedIds,
-    };
-}

@@ -49,7 +49,7 @@ function logStats(stats: IngestionPipelineStats): void {
     logger.info(`Processed documents: ${stats.processedDocuments}`);
     logger.info(`Skipped documents: ${stats.skippedDocuments}`);
     logger.info(`Chunks upserted: ${stats.upsertedChunks}`);
-    logger.info(`Chunks reordered: ${stats.reorderedChunks}`);
+    logger.info(`Chunks moved: ${stats.movedChunks}`);
     logger.info(`Chunks deleted: ${stats.deletedChunks}`);
 }
 
