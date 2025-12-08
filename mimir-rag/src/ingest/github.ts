@@ -396,7 +396,18 @@ export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubD
     // Download MDX files from docs repo
     if (docsUrl) {
         try {
-            const docsConfig = { ...appConfig, github: { ...config, githubUrl: docsUrl } };
+            // Use docs-specific config, falling back to main config
+            const docsDir = config.docsDirectory ?? config.directory;
+            const docsIncludeDirs = config.docsIncludeDirectories ?? config.includeDirectories;
+            const docsConfig = { 
+                ...appConfig, 
+                github: { 
+                    ...config, 
+                    githubUrl: docsUrl,
+                    directory: docsDir,
+                    includeDirectories: docsIncludeDirs,
+                } 
+            };
             const mdxFiles = await downloadGithubMdxFiles(docsConfig);
             documents.push(...mdxFiles.map((doc) => ({
                 type: "mdx" as const,
@@ -411,7 +422,18 @@ export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubD
     // Download TypeScript files from code repo
     if (codeUrl) {
         try {
-            const codeConfig = { ...appConfig, github: { ...config, githubUrl: codeUrl } };
+            // Use code-specific config, falling back to main config
+            const codeDir = config.codeDirectory ?? config.directory;
+            const codeIncludeDirs = config.codeIncludeDirectories ?? config.includeDirectories;
+            const codeConfig = { 
+                ...appConfig, 
+                github: { 
+                    ...config, 
+                    githubUrl: codeUrl,
+                    directory: codeDir,
+                    includeDirectories: codeIncludeDirs,
+                } 
+            };
             const tsFiles = await downloadGithubTypescriptFiles(codeConfig);
             documents.push(...tsFiles.map((doc) => ({
                 type: "typescript" as const,
