@@ -14,11 +14,16 @@ CONFIG_ABS := $(abspath $(CONFIG_PATH))
 PORT ?= 3001
 
 setup-db:
-	@if [ -z "$${DATABASE_URL:-$(DB_URL)}" ]; then \
-		echo "Error: set DATABASE_URL (or pass DB_URL=...) so the schema can be bootstrapped."; \
+	@if [ -f "$(CONFIG_PATH)" ]; then \
+		set -a; \
+		. "$(CONFIG_PATH)"; \
+		set +a; \
+	fi; \
+	if [ -z "$$DATABASE_URL" ] && [ -z "$(DB_URL)" ]; then \
+		echo "Error: set DATABASE_URL in $(CONFIG_PATH) or pass DB_URL=... so the schema can be bootstrapped."; \
 		exit 1; \
-	fi
-	@DB_URL="$${DATABASE_URL:-$(DB_URL)}"; \
+	fi; \
+	DB_URL="$${DATABASE_URL:-$(DB_URL)}"; \
 	DB_PASSWORD="$${PGPASSWORD:-$(DB_PASSWORD)}"; \
 	if [ -z "$$DB_PASSWORD" ]; then \
 		$(PSQL) "$$DB_URL" -f $(SETUP_SQL); \
