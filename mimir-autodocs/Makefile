@@ -1,11 +1,11 @@
 .PHONY: setup-db ingest clean docker-build docker-run docker-run-build
 
-# Export environment variables to Make
+# Export environment variables to subprocesses
 export
 
-# Use environment variables with fallback to Make variables
-DB_URL ?= $(or $(DATABASE_URL),$(shell echo $$DATABASE_URL))
-DB_PASSWORD ?= $(or $(PGPASSWORD),$(shell echo $$PGPASSWORD))
+# Use environment variables (Make automatically imports them)
+DB_URL ?= $(DATABASE_URL)
+DB_PASSWORD ?= $(PGPASSWORD)
 PSQL ?= psql
 SETUP_SQL := src/supabase/setup.sql
 IMAGE_NAME ?= mimir-autodocs:local
