@@ -1,0 +1,52 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+tmp
+
+# Git
+.git
+.github
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Environment files (use .env.example instead)
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Documentation
+README.md
+*.md
+!.env.example
+
+# Test files
+coverage
+.nyc_output
+test
+tests
+**/*.test.ts
+**/*.spec.ts
+
