@@ -111,6 +111,13 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
             branch: getEnv("MIMIR_GITHUB_BRANCH", false) ?? "main",
             token: getEnv("MIMIR_GITHUB_TOKEN", false),
             outputDir: getEnv("MIMIR_GITHUB_OUTPUT_DIR", false) ?? "./tmp/github-cache",
+            includeDirectories: getEnv("MIMIR_GITHUB_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
+        },
+        parser: {
+            extractVariables: getEnvBoolean("MIMIR_EXTRACT_VARIABLES", false),
+            extractMethods: getEnvBoolean("MIMIR_EXTRACT_METHODS", true),
+            excludePatterns: getEnv("MIMIR_EXCLUDE_PATTERNS", false)?.split(",").map(p => p.trim()).filter(Boolean),
+            includeDirectories: getEnv("MIMIR_GITHUB_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
         },
         docs: {
             baseUrl: getEnv("MIMIR_DOCS_BASE_URL", false),

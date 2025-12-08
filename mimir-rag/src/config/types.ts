@@ -26,6 +26,14 @@ export interface GithubConfig {
     branch?: string;
     token?: string;
     outputDir?: string;
+    includeDirectories?: string[];
+}
+
+export interface ParserConfig {
+    extractVariables?: boolean;
+    extractMethods?: boolean;
+    excludePatterns?: string[];
+    includeDirectories?: string[];
 }
 
 export interface DocumentationConfig {
@@ -76,5 +84,6 @@ export interface AppConfig {
     logging: LoggingConfig;
     github: GithubConfig;
     docs?: DocumentationConfig;
+    parser?: ParserConfig;
     llm: LLMConfig;
 }
