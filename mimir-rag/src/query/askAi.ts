@@ -22,6 +22,9 @@ export interface AskAiSource {
     githubUrl?: string;
     docsUrl?: string;
     finalUrl: string;
+    entityType?: string;
+    startLine?: number;
+    endLine?: number;
 }
 
 export interface AskAiResult {
@@ -135,13 +138,21 @@ export async function askAi(
                 }
                 if (chunk.sources && chunk.sources.length > 0) {
                     collectedSources.length = 0;
-                    collectedSources.push(...chunk.sources.map((src) => ({
-                        filepath: src.filepath,
-                        chunkTitle: src.chunkTitle,
-                        githubUrl: undefined,
-                        docsUrl: undefined,
-                        finalUrl: src.url || src.filepath,
-                    })));
+                    // Map sources from matches (which have entityType, startLine, endLine)
+                    const sourceMap = new Map(matches.map(m => [`${m.filepath}:${m.chunkTitle}`, m]));
+                    collectedSources.push(...chunk.sources.map((src) => {
+                        const match = sourceMap.get(`${src.filepath}:${src.chunkTitle}`);
+                        return {
+                            filepath: src.filepath,
+                            chunkTitle: src.chunkTitle,
+                            githubUrl: match?.githubUrl,
+                            docsUrl: match?.docsUrl,
+                            finalUrl: src.url || match?.githubUrl || match?.finalUrl || src.filepath,
+                            entityType: match?.entityType,
+                            startLine: match?.startLine,
+                            endLine: match?.endLine,
+                        };
+                    }));
                 }
             }
         }
@@ -158,13 +169,21 @@ export async function askAi(
         signal: options.signal,
     });
 
-    const sources: AskAiSource[] = result.sources.map((src) => ({
-        filepath: src.filepath,
-        chunkTitle: src.chunkTitle,
-        githubUrl: undefined,
-        docsUrl: undefined,
-        finalUrl: src.url || src.filepath,
-    }));
+    // Map sources from matches (which have entityType, startLine, endLine)
+    const sourceMap = new Map(matches.map(m => [`${m.filepath}:${m.chunkTitle}`, m]));
+    const sources: AskAiSource[] = result.sources.map((src) => {
+        const match = sourceMap.get(`${src.filepath}:${src.chunkTitle}`);
+        return {
+            filepath: src.filepath,
+            chunkTitle: src.chunkTitle,
+            githubUrl: match?.githubUrl,
+            docsUrl: match?.docsUrl,
+            finalUrl: src.url || match?.githubUrl || match?.finalUrl || src.filepath,
+            entityType: match?.entityType,
+            startLine: match?.startLine,
+            endLine: match?.endLine,
+        };
+    });
 
     activeLogger.info({ answer: result.answer, sourcesCount: sources.length }, "answer from the AI");
 
