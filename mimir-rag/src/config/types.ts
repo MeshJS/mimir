@@ -22,6 +22,8 @@ export interface SupabaseConfig {
 
 export interface GithubConfig {
     githubUrl: string;
+    codeUrl?: string; // Optional: separate repo for TypeScript code
+    docsUrl?: string; // Optional: separate repo for MDX docs
     directory?: string;
     branch?: string;
     token?: string;

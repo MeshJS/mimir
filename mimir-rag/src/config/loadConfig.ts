@@ -106,7 +106,9 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
             enableHybridSearch: getEnvBoolean("MIMIR_SUPABASE_ENABLE_HYBRID_SEARCH", true),
         },
         github: {
-            githubUrl: getEnv("MIMIR_GITHUB_URL") ?? "",
+            githubUrl: getEnv("MIMIR_GITHUB_URL", false) ?? "",
+            codeUrl: getEnv("MIMIR_GITHUB_CODE_URL", false),
+            docsUrl: getEnv("MIMIR_GITHUB_DOCS_URL", false),
             directory: getEnv("MIMIR_GITHUB_DIRECTORY", false),
             branch: getEnv("MIMIR_GITHUB_BRANCH", false) ?? "main",
             token: getEnv("MIMIR_GITHUB_TOKEN", false),
