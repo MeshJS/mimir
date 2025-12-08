@@ -4,7 +4,7 @@ import type { ChatModelConfig } from "../../config/types";
 import type { GenerateAnswerOptions, StructuredAnswerResult } from "../types";
 import { buildPromptMessages, answerWithSourcesSchema } from "../prompt";
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { generateObject, streamObject } from 'ai';
+import { generateObject, streamObject, generateText } from 'ai';
 import { resolveBaseUrl, mergeLimits } from "../../utils/providerUtils";
 
 const ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com/";
@@ -63,5 +63,19 @@ export class AnthropicChatProvider extends BaseChatProvider {
             schema: answerWithSourcesSchema,
         });
         return object as StructuredAnswerResult;
+    }
+
+    protected async completeEntityContext(systemPrompt: string, userPrompt: string): Promise<string> {
+        const model = this.sdk(this.config.model);
+
+        const { text } = await generateText({
+            model,
+            system: systemPrompt,
+            prompt: userPrompt,
+            temperature: this.config.temperature,
+            maxTokens: this.config.maxOutputTokens ?? 500,
+        });
+
+        return text;
     }
 }
