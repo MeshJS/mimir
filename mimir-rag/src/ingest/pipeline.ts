@@ -1,9 +1,11 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "../config/types";
-import type { LLMClientBundle } from "../llm/types";
+import type { LLMClientBundle, EntityContextInput } from "../llm/types";
 import { getLogger } from "../utils/logger";
-import { downloadGithubMdxFiles, GithubMdxDocument } from "./github";
+import { downloadGithubFiles, downloadGithubMdxFiles, GithubMdxDocument, GithubDocument, GithubDocumentType } from "./github";
 import { chunkMdxFile, enforceChunkTokenLimit, MdxChunk } from "./chunker";
+import { parseTypescriptFile, ParsedFile } from "./astParser";
+import { chunkParsedFile, EntityChunk } from "./entityChunker";
 import type { SupabaseVectorStore } from "../supabase/client";
 import type { DocumentChunk } from "../supabase/types";
 import { resolveEmbeddingInputTokenLimit } from "../llm/modelLimits";
@@ -16,20 +18,32 @@ interface PendingEmbeddingChunk {
     checksum: string;
     content: string;
     contextualText: string;
+    sourceType: 'mdx' | 'typescript';
+    entityType?: string;
+    startLine?: number;
+    endLine?: number;
+    githubUrl?: string;
 }
+
+/** Unified chunk type for both MDX and TypeScript */
+type UnifiedChunk = 
+    | { sourceType: 'mdx'; chunk: MdxChunk }
+    | { sourceType: 'typescript'; chunk: EntityChunk };
 
 /** Target location for a chunk in the new state */
 interface TargetChunkLocation {
     filepath: string;
     chunkId: number;
-    chunk: MdxChunk;
+    chunk: UnifiedChunk;
+    sourceType: 'mdx' | 'typescript';
+    githubUrl?: string;
 }
 
 /** Classification of how a chunk should be handled */
 type ChunkClassification =
     | { type: "unchanged"; existingId: number }
-    | { type: "moved"; existingId: number; newFilepath: string; newChunkId: number }
-    | { type: "new"; chunk: MdxChunk; filepath: string; chunkId: number };
+    | { type: "moved"; existingId: number; newFilepath: string; newChunkId: number; newSourceType: 'mdx' | 'typescript' }
+    | { type: "new"; chunk: UnifiedChunk; filepath: string; chunkId: number; sourceType: 'mdx' | 'typescript'; githubUrl?: string };
 
 export interface IngestionPipelineStats {
     processedDocuments: number;
@@ -40,7 +54,7 @@ export interface IngestionPipelineStats {
 }
 
 export interface IngestionPipelineResult {
-    documents: GithubMdxDocument[];
+    documents: GithubDocument[];
     stats: IngestionPipelineStats;
 }
 
@@ -55,7 +69,7 @@ export async function runIngestionPipeline(
         ? baseLogger.child({ module: "ingest" })
         : baseLogger;
 
-    const documents = await downloadGithubMdxFiles(appConfig);
+    const documents = await downloadGithubFiles(appConfig);
     const chunkTokenLimit = resolveEmbeddingInputTokenLimit(llm.embedding.config);
 
     const stats: IngestionPipelineStats = {
@@ -66,12 +80,15 @@ export async function runIngestionPipeline(
         deletedChunks: 0,
     };
 
-    ingestionLogger.info(`Processing ${documents.length} MDX document${documents.length === 1 ? "" : "s"}.`);
+    const mdxCount = documents.filter(d => d.type === 'mdx').length;
+    const tsCount = documents.filter(d => d.type === 'typescript').length;
+    ingestionLogger.info(`Processing ${documents.length} document${documents.length === 1 ? "" : "s"} (${mdxCount} MDX, ${tsCount} TypeScript).`);
 
     // Collect target state from all documents: checksum -> target location
     const targetState = new Map<string, TargetChunkLocation>();
     const allChecksums: string[] = [];
-    const documentChunksMap = new Map<string, MdxChunk[]>(); // filepath -> chunks
+    const documentMap = new Map<string, GithubDocument>(); // filepath -> document
+    const documentChunksMap = new Map<string, { chunks: UnifiedChunk[]; parsedFile?: ParsedFile }>(); // filepath -> {chunks, parsedFile}
 
     for (const document of documents) {
         const filepath = document.relativePath || document.path;
@@ -79,38 +96,85 @@ export async function runIngestionPipeline(
             ? ingestionLogger.child({ file: filepath })
             : ingestionLogger;
 
-        const rawChunks = chunkMdxFile(document.content);
-        const preparedChunks = enforceChunkTokenLimit(rawChunks, {
-            tokenLimit: chunkTokenLimit,
-            model: llm.embedding.config.model,
-        });
+        documentMap.set(filepath, document);
 
-        if (preparedChunks.length === 0) {
-            stats.skippedDocuments += 1;
-            fileLogger.warn("No chunks were generated for this document. Skipping.");
-            continue;
-        }
-
-        const additionalChunks = preparedChunks.length - rawChunks.length;
-        if (additionalChunks > 0) {
-            fileLogger.info(
-                `Split ${additionalChunks} oversized chunk${additionalChunks === 1 ? "" : "s"} to respect the ${chunkTokenLimit} token embedding limit.`
-            );
-        }
-
-        stats.processedDocuments += 1;
-        documentChunksMap.set(filepath, preparedChunks);
-
-        preparedChunks.forEach((chunk, index) => {
-            // If same checksum appears in multiple files, the last one wins
-            // This is expected behavior - content deduplication
-            targetState.set(chunk.checksum, {
-                filepath,
-                chunkId: index,
-                chunk,
+        if (document.type === 'mdx') {
+            // Process MDX files
+            const rawChunks = chunkMdxFile(document.content);
+            const preparedChunks = enforceChunkTokenLimit(rawChunks, {
+                tokenLimit: chunkTokenLimit,
+                model: llm.embedding.config.model,
             });
-            allChecksums.push(chunk.checksum);
-        });
+
+            if (preparedChunks.length === 0) {
+                stats.skippedDocuments += 1;
+                fileLogger.warn("No chunks were generated for this document. Skipping.");
+                continue;
+            }
+
+            const additionalChunks = preparedChunks.length - rawChunks.length;
+            if (additionalChunks > 0) {
+                fileLogger.info(
+                    `Split ${additionalChunks} oversized chunk${additionalChunks === 1 ? "" : "s"} to respect the ${chunkTokenLimit} token embedding limit.`
+                );
+            }
+
+            stats.processedDocuments += 1;
+            documentChunksMap.set(filepath, {
+                chunks: preparedChunks.map(chunk => ({ sourceType: 'mdx' as const, chunk })),
+            });
+
+            preparedChunks.forEach((chunk, index) => {
+                const links = resolveSourceLinks(filepath, chunk.chunkTitle, appConfig);
+                targetState.set(chunk.checksum, {
+                    filepath,
+                    chunkId: index,
+                    chunk: { sourceType: 'mdx', chunk },
+                    sourceType: 'mdx',
+                    githubUrl: links.githubUrl,
+                });
+                allChecksums.push(chunk.checksum);
+            });
+        } else if (document.type === 'typescript') {
+            // Process TypeScript files
+            let parsedFile: ParsedFile;
+            try {
+                parsedFile = parseTypescriptFile(filepath, document.content, appConfig.parser);
+            } catch (error) {
+                fileLogger.error({ err: error }, "Failed to parse TypeScript file. Skipping.");
+                stats.skippedDocuments += 1;
+                continue;
+            }
+
+            const chunkedFile = chunkParsedFile(parsedFile, {
+                tokenLimit: chunkTokenLimit,
+                model: llm.embedding.config.model,
+            });
+
+            if (chunkedFile.chunks.length === 0) {
+                stats.skippedDocuments += 1;
+                fileLogger.warn("No entities were generated for this document. Skipping.");
+                continue;
+            }
+
+            stats.processedDocuments += 1;
+            documentChunksMap.set(filepath, {
+                chunks: chunkedFile.chunks.map(chunk => ({ sourceType: 'typescript' as const, chunk })),
+                parsedFile,
+            });
+
+            chunkedFile.chunks.forEach((chunk, index) => {
+                const links = resolveSourceLinks(filepath, chunk.qualifiedName, appConfig);
+                targetState.set(chunk.checksum, {
+                    filepath,
+                    chunkId: index,
+                    chunk: { sourceType: 'typescript', chunk },
+                    sourceType: 'typescript',
+                    githubUrl: links.githubUrl,
+                });
+                allChecksums.push(chunk.checksum);
+            });
+        }
     }
 
     if (targetState.size === 0) {
@@ -145,6 +209,7 @@ export async function runIngestionPipeline(
                 (dbChunk) => 
                     dbChunk.filepath === target.filepath && 
                     dbChunk.chunkId === target.chunkId &&
+                    dbChunk.sourceType === target.sourceType &&
                     !alreadyAssignedDbIds.has(dbChunk.id)
             );
 
@@ -165,6 +230,7 @@ export async function runIngestionPipeline(
                         existingId: reusableDbChunk.id,
                         newFilepath: target.filepath,
                         newChunkId: target.chunkId,
+                        newSourceType: target.sourceType,
                     });
                     alreadyAssignedDbIds.add(reusableDbChunk.id);
                 } else {
@@ -175,6 +241,8 @@ export async function runIngestionPipeline(
                         chunk: target.chunk,
                         filepath: target.filepath,
                         chunkId: target.chunkId,
+                        sourceType: target.sourceType,
+                        githubUrl: target.githubUrl,
                     });
                 }
             }
@@ -185,6 +253,8 @@ export async function runIngestionPipeline(
                 chunk: target.chunk,
                 filepath: target.filepath,
                 chunkId: target.chunkId,
+                sourceType: target.sourceType,
+                githubUrl: target.githubUrl,
             });
         }
     }
@@ -205,6 +275,7 @@ export async function runIngestionPipeline(
                 id: c.existingId,
                 filepath: c.newFilepath,
                 chunkId: c.newChunkId,
+                sourceType: c.newSourceType,
             }))
         );
         stats.movedChunks = movedChunks.length;
@@ -228,10 +299,10 @@ export async function runIngestionPipeline(
     }
 
     // Group new chunks by filepath for context generation
-    const newChunksByFilepath = new Map<string, Array<{ chunk: MdxChunk; chunkId: number }>>();
+    const newChunksByFilepath = new Map<string, Array<{ chunk: UnifiedChunk; chunkId: number; sourceType: 'mdx' | 'typescript'; githubUrl?: string }>>();
     for (const c of newChunks) {
         const existing = newChunksByFilepath.get(c.filepath) ?? [];
-        existing.push({ chunk: c.chunk, chunkId: c.chunkId });
+        existing.push({ chunk: c.chunk, chunkId: c.chunkId, sourceType: c.sourceType, githubUrl: c.githubUrl });
         newChunksByFilepath.set(c.filepath, existing);
     }
 
@@ -239,9 +310,7 @@ export async function runIngestionPipeline(
     const contextTasks: Promise<void>[] = [];
 
     for (const [filepath, chunks] of newChunksByFilepath.entries()) {
-        const document = documents.find(
-            (d) => (d.relativePath || d.path) === filepath
-        );
+        const document = documentMap.get(filepath);
 
         if (!document) {
             ingestionLogger.warn(`Document for filepath ${filepath} not found. Skipping context generation.`);
@@ -256,38 +325,125 @@ export async function runIngestionPipeline(
             `Generating context for ${chunks.length} new chunk${chunks.length === 1 ? "" : "s"}.`
         );
 
-        const chunkContents = chunks.map((entry) => entry.chunk.chunkContent);
-        const contextTask = llm.chat
-            .generateFileChunkContexts(chunkContents, document.content)
-            .then((contexts) => {
-                if (contexts.length !== chunks.length) {
-                    throw new Error(
-                        `Context generation returned ${contexts.length} entries for ${chunks.length} chunks in ${filepath}.`
-                    );
-                }
+        const sourceType = chunks[0]?.sourceType ?? document.type;
+        const fileEntry = documentChunksMap.get(filepath);
 
-                chunks.forEach((entry, index) => {
-                    const contextHeader = contexts[index]?.trim() ?? "";
-                    const contextualText = `${contextHeader}---${entry.chunk.chunkContent}`;
-                    pendingEmbeddings.push({
-                        filepath,
-                        chunkId: entry.chunkId,
-                        chunkTitle: entry.chunk.chunkTitle,
-                        checksum: entry.chunk.checksum,
-                        content: entry.chunk.chunkContent,
-                        contextualText,
+        if (sourceType === 'mdx') {
+            // MDX context generation
+            const chunkContents = chunks.map((entry) => {
+                if (entry.chunk.sourceType === 'mdx') {
+                    return entry.chunk.chunk.chunkContent;
+                }
+                throw new Error(`Mismatched chunk type for MDX file ${filepath}`);
+            });
+            const contextTask = llm.chat
+                .generateFileChunkContexts(chunkContents, document.content)
+                .then((contexts) => {
+                    if (contexts.length !== chunks.length) {
+                        throw new Error(
+                            `Context generation returned ${contexts.length} entries for ${chunks.length} chunks in ${filepath}.`
+                        );
+                    }
+
+                    chunks.forEach((entry, index) => {
+                        if (entry.chunk.sourceType === 'mdx') {
+                            const contextHeader = contexts[index]?.trim() ?? "";
+                            const contextualText = `${contextHeader}---${entry.chunk.chunk.chunkContent}`;
+                            const links = resolveSourceLinks(filepath, entry.chunk.chunk.chunkTitle, appConfig);
+                            pendingEmbeddings.push({
+                                filepath,
+                                chunkId: entry.chunkId,
+                                chunkTitle: entry.chunk.chunk.chunkTitle,
+                                checksum: entry.chunk.chunk.checksum,
+                                content: entry.chunk.chunk.chunkContent,
+                                contextualText,
+                                sourceType: 'mdx',
+                                githubUrl: links.githubUrl,
+                            });
+                        }
                     });
+                })
+                .catch((error) => {
+                    fileLogger.error(
+                        { err: error },
+                        `Failed to generate contextual summaries for ${filepath}.`
+                    );
+                    throw error;
                 });
-            })
-            .catch((error) => {
-                fileLogger.error(
-                    { err: error },
-                    `Failed to generate contextual summaries for ${filepath}.`
-                );
-                throw error;
+
+            contextTasks.push(contextTask);
+        } else if (sourceType === 'typescript') {
+            // TypeScript entity context generation
+            const parsedFile = fileEntry?.parsedFile;
+            if (!parsedFile) {
+                fileLogger.warn(`Parsed file entry for ${filepath} not found. Skipping context generation.`);
+                continue;
+            }
+
+            const entityInputs: EntityContextInput[] = chunks.map((entry) => {
+                if (entry.chunk.sourceType === 'typescript') {
+                    // Find the original entity from parsedFile.entities using qualifiedName
+                    const originalEntity = parsedFile.entities.find(
+                        e => e.qualifiedName === entry.chunk.chunk.qualifiedName.split('_part')[0] // Handle split chunk titles
+                    );
+
+                    return {
+                        entityCode: entry.chunk.chunk.content,
+                        entityType: entry.chunk.chunk.entityType,
+                        entityName: originalEntity?.name ?? entry.chunk.chunk.qualifiedName,
+                        qualifiedName: originalEntity?.qualifiedName ?? entry.chunk.chunk.qualifiedName,
+                        fullFileContent: document.content,
+                        parentContext: originalEntity?.parentContext,
+                        jsDoc: originalEntity?.jsDoc,
+                        imports: parsedFile.imports,
+                        parameters: originalEntity?.parameters,
+                        returnType: originalEntity?.returnType,
+                    };
+                }
+                throw new Error(`Mismatched chunk type for TypeScript file ${filepath}`);
             });
 
-        contextTasks.push(contextTask);
+            const contextTask = llm.chat
+                .generateEntityContexts(entityInputs, document.content)
+                .then((contexts) => {
+                    if (contexts.length !== chunks.length) {
+                        throw new Error(
+                            `Context generation returned ${contexts.length} entries for ${chunks.length} chunks in ${filepath}.`
+                        );
+                    }
+
+                    chunks.forEach((entry, index) => {
+                        if (entry.chunk.sourceType === 'typescript') {
+                            const contextHeader = contexts[index]?.trim() ?? "";
+                            const contextualText = contextHeader
+                                ? `${contextHeader}\n---\n${entry.chunk.chunk.content}`
+                                : entry.chunk.chunk.content;
+                            pendingEmbeddings.push({
+                                filepath,
+                                chunkId: entry.chunkId,
+                                chunkTitle: entry.chunk.chunk.qualifiedName,
+                                checksum: entry.chunk.chunk.checksum,
+                                content: entry.chunk.chunk.content,
+                                contextualText,
+                                sourceType: 'typescript',
+                                entityType: entry.chunk.chunk.entityType,
+                                startLine: entry.chunk.chunk.startLine,
+                                endLine: entry.chunk.chunk.endLine,
+                                githubUrl: entry.githubUrl,
+                            });
+                        }
+                    });
+                })
+                .catch((error) => {
+                    fileLogger.error(
+                        { err: error },
+                        `Failed to generate contextual summaries for ${filepath}.`
+                    );
+                    throw error;
+                });
+
+            contextTasks.push(contextTask);
+        }
     }
 
     await Promise.all(contextTasks);
@@ -305,7 +461,9 @@ export async function runIngestionPipeline(
     }
 
     const upsertPayload: DocumentChunk[] = pendingEmbeddings.map((entry, index) => {
-        const links = resolveSourceLinks(entry.filepath, entry.chunkTitle, appConfig);
+        const links = entry.githubUrl 
+            ? { githubUrl: entry.githubUrl, docsUrl: undefined, finalUrl: entry.githubUrl }
+            : resolveSourceLinks(entry.filepath, entry.chunkTitle, appConfig);
         return {
             content: entry.content,
             contextualText: entry.contextualText,
@@ -317,6 +475,10 @@ export async function runIngestionPipeline(
             githubUrl: links.githubUrl,
             docsUrl: links.docsUrl,
             finalUrl: links.finalUrl,
+            sourceType: entry.sourceType,
+            entityType: entry.entityType,
+            startLine: entry.startLine,
+            endLine: entry.endLine,
         };
     });
 

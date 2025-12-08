@@ -16,6 +16,10 @@ interface SupabaseDocRow {
     github_url?: string;
     docs_url?: string;
     final_url?: string;
+    source_type?: string;
+    entity_type?: string;
+    start_line?: number;
+    end_line?: number;
     similarity?: number;
     bm25_rank?: number;
 }
@@ -25,6 +29,7 @@ export interface ExistingChunkInfo {
     checksum: string;
     filepath: string;
     chunkId: number;
+    sourceType?: 'mdx' | 'typescript';
 }
 
 export class SupabaseVectorStore {
@@ -97,7 +102,7 @@ export class SupabaseVectorStore {
             
             const { data, error } = await this.client
                 .from(this.config.table)
-                .select("id, chunk_id, checksum, filepath")
+                .select("id, chunk_id, checksum, filepath, source_type")
                 .in("checksum", batch);
             
             if (error) {
@@ -111,6 +116,7 @@ export class SupabaseVectorStore {
                     checksum: row.checksum,
                     filepath: row.filepath,
                     chunkId: row.chunk_id,
+                    sourceType: row.source_type as 'mdx' | 'typescript' | undefined,
                 };
                 const existing = map.get(row.checksum);
                 if (existing) {
@@ -136,6 +142,10 @@ export class SupabaseVectorStore {
             github_url: chunk.githubUrl,
             docs_url: chunk.docsUrl,
             final_url: chunk.finalUrl,
+            source_type: chunk.sourceType ?? 'mdx',
+            entity_type: chunk.entityType ?? null,
+            start_line: chunk.startLine ?? null,
+            end_line: chunk.endLine ?? null,
         }));
 
         const { error } = await this.client
@@ -226,7 +236,7 @@ export class SupabaseVectorStore {
         this.logger.info(`Reordered ${updates.length} chunk${updates.length === 1 ? "" : "s"}.`);
     }
 
-    async moveChunksAtomic(moves: Array<{ id: number; filepath: string; chunkId: number }>): Promise<void> {
+    async moveChunksAtomic(moves: Array<{ id: number; filepath: string; chunkId: number; sourceType?: 'mdx' | 'typescript' }>): Promise<void> {
         if (moves.length === 0) {
             return;
         }
@@ -234,9 +244,13 @@ export class SupabaseVectorStore {
         // Phase 1: Move all chunks to temporary filepaths to avoid unique constraint conflicts
         for (const move of moves) {
             const tempFilepath = `__moving__${move.id}`;
+            const updateData: any = { filepath: tempFilepath, chunk_id: move.chunkId };
+            if (move.sourceType) {
+                updateData.source_type = move.sourceType;
+            }
             const { error } = await this.client
                 .from(this.config.table)
-                .update({ filepath: tempFilepath, chunk_id: move.chunkId })
+                .update(updateData)
                 .eq("id", move.id);
 
             if (error) {
@@ -247,9 +261,13 @@ export class SupabaseVectorStore {
 
         // Phase 2: Move all chunks to their final filepaths
         for (const move of moves) {
+            const updateData: any = { filepath: move.filepath };
+            if (move.sourceType) {
+                updateData.source_type = move.sourceType;
+            }
             const { error } = await this.client
                 .from(this.config.table)
-                .update({ filepath: move.filepath })
+                .update(updateData)
                 .eq("id", move.id);
 
             if (error) {
@@ -325,6 +343,10 @@ export class SupabaseVectorStore {
             githubUrl: row.github_url ?? undefined,
             docsUrl: row.docs_url ?? undefined,
             finalUrl: row.final_url ?? undefined,
+            sourceType: (row.source_type as 'mdx' | 'typescript' | undefined) ?? 'mdx',
+            entityType: row.entity_type ?? undefined,
+            startLine: row.start_line ?? undefined,
+            endLine: row.end_line ?? undefined,
             similarity: row.similarity,
         }));
     }
@@ -356,6 +378,10 @@ export class SupabaseVectorStore {
             githubUrl: row.github_url ?? undefined,
             docsUrl: row.docs_url ?? undefined,
             finalUrl: row.final_url ?? undefined,
+            sourceType: (row.source_type as 'mdx' | 'typescript' | undefined) ?? 'mdx',
+            entityType: row.entity_type ?? undefined,
+            startLine: row.start_line ?? undefined,
+            endLine: row.end_line ?? undefined,
             bm25Rank: row.bm25_rank,
         }));
     }
