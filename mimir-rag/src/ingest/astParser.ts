@@ -149,9 +149,13 @@ function extractEntity(
         if (entity) entities.push(entity);
     }
     // Variable statements (const/let/var with arrow functions or important values)
-    else if (ts.isVariableStatement(node) && config.extractVariables) {
-        const variableEntities = extractVariableEntities(node, sourceFile);
-        entities.push(...variableEntities);
+    else if (ts.isVariableStatement(node)) {
+        // Always extract exported const functions (arrow functions) - they're functions, not just variables
+        const hasExportedArrowFunction = hasExportedArrowFunctions(node, sourceFile);
+        if (hasExportedArrowFunction || config.extractVariables) {
+            const variableEntities = extractVariableEntities(node, sourceFile, config.extractVariables);
+            entities.push(...variableEntities);
+        }
     }
     // Export assignments (export default)
     else if (ts.isExportAssignment(node)) {
@@ -334,22 +338,40 @@ function extractEnumEntity(
     };
 }
 
-function extractVariableEntities(
+function hasExportedArrowFunctions(
     node: ts.VariableStatement,
     sourceFile: ts.SourceFile
+): boolean {
+    if (!hasExportModifier(node)) return false;
+    
+    return node.declarationList.declarations.some((declaration) => {
+        return declaration.initializer && ts.isArrowFunction(declaration.initializer);
+    });
+}
+
+function extractVariableEntities(
+    node: ts.VariableStatement,
+    sourceFile: ts.SourceFile,
+    extractAllVariables: boolean = false
 ): TypeScriptEntity[] {
     const entities: TypeScriptEntity[] = [];
+    const isExported = hasExportModifier(node);
 
     node.declarationList.declarations.forEach((declaration) => {
         if (!ts.isIdentifier(declaration.name)) return;
 
         const name = declaration.name.getText(sourceFile);
         
-        // Only extract if it's an arrow function or has type annotation
+        // Always extract exported arrow functions (they're functions, not just variables)
         const hasArrowFunction = declaration.initializer && ts.isArrowFunction(declaration.initializer);
-        const hasTypeAnnotation = declaration.type !== undefined;
+        const isExportedArrowFunction = isExported && hasArrowFunction;
         
-        if (!hasArrowFunction && !hasTypeAnnotation) return;
+        // For other variables (non-exported arrow functions, variables with type annotations),
+        // only extract if extractAllVariables is true
+        const hasTypeAnnotation = declaration.type !== undefined;
+        const shouldExtract = isExportedArrowFunction || (extractAllVariables && (hasArrowFunction || hasTypeAnnotation));
+        
+        if (!shouldExtract) return;
 
         const code = node.getText(sourceFile);
         const { line: startLine } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));

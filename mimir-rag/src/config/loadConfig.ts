@@ -66,7 +66,7 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
 
     const supabaseUrl = getEnv("MIMIR_SUPABASE_URL");
     const supabaseServiceRoleKey = getEnv("MIMIR_SUPABASE_SERVICE_ROLE_KEY");
-    const supabaseTable = getEnv("MIMIR_SUPABASE_TABLE") ?? "documents";
+    const supabaseTable = getEnv("MIMIR_SUPABASE_TABLE", false) ?? "docs";
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         throw new Error("Supabase configuration requires MIMIR_SUPABASE_URL and MIMIR_SUPABASE_SERVICE_ROLE_KEY.");
