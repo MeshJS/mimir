@@ -34,11 +34,18 @@ npm install
 
 ### 2. Set Up Database
 
-Run the SQL setup script in your Supabase project:
-
+**Option A: Using Makefile (recommended)**
 ```bash
-# Copy the contents of src/supabase/setup.sql and run in Supabase SQL Editor
+# Set DATABASE_URL in your environment or .env file
+export DATABASE_URL="postgresql://postgres:password@db.your-project.supabase.co:5432/postgres"
+make setup-db
 ```
+
+**Option B: Using Docker (automatic)**
+The Docker container will automatically run the setup SQL on startup if `DATABASE_URL` is set.
+
+**Option C: Manual**
+Copy the contents of `src/supabase/setup.sql` and run in Supabase SQL Editor.
 
 ### 3. Configure Environment
 
@@ -172,6 +179,48 @@ CREATE TABLE autodocs_chunks (
 npm run ingest          # Run ingestion pipeline
 npm run generate-apikey # Generate a new API key
 npm run build           # Build TypeScript
+```
+
+## Docker Usage
+
+### Build and Run
+
+```bash
+# Build the Docker image
+make docker-build
+
+# Run ingestion in Docker (automatically sets up database)
+make docker-run
+
+# Or build and run in one command
+make docker-run-build
+```
+
+The Docker container will:
+1. Automatically run `setup.sql` to create tables if `DATABASE_URL` is set
+2. Load environment variables from `.env` file
+3. Run the ingestion pipeline
+
+### Environment Variables for Docker
+
+Add to your `.env` file:
+```env
+# For automatic database setup
+DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
+# OR
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_DB_PASSWORD=your_database_password
+```
+
+## Makefile Commands
+
+```bash
+make setup-db          # Run database setup SQL
+make ingest            # Run ingestion pipeline
+make clean             # Remove dist and tmp directories
+make docker-build       # Build Docker image
+make docker-run        # Run Docker container
+make docker-run-build   # Build and run Docker container
 ```
 
 ## Architecture
