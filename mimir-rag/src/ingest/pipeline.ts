@@ -382,16 +382,17 @@ export async function runIngestionPipeline(
 
             const entityInputs: EntityContextInput[] = chunks.map((entry) => {
                 if (entry.chunk.sourceType === 'typescript') {
+                    const tsChunk = entry.chunk.chunk;
                     // Find the original entity from parsedFile.entities using qualifiedName
                     const originalEntity = parsedFile.entities.find(
-                        e => e.qualifiedName === entry.chunk.chunk.qualifiedName.split('_part')[0] // Handle split chunk titles
+                        e => e.qualifiedName === tsChunk.qualifiedName.split('_part')[0] // Handle split chunk titles
                     );
 
                     return {
-                        entityCode: entry.chunk.chunk.content,
-                        entityType: entry.chunk.chunk.entityType,
-                        entityName: originalEntity?.name ?? entry.chunk.chunk.qualifiedName,
-                        qualifiedName: originalEntity?.qualifiedName ?? entry.chunk.chunk.qualifiedName,
+                        entityCode: tsChunk.content,
+                        entityType: tsChunk.entityType,
+                        entityName: originalEntity?.name ?? tsChunk.qualifiedName,
+                        qualifiedName: originalEntity?.qualifiedName ?? tsChunk.qualifiedName,
                         fullFileContent: document.content,
                         parentContext: originalEntity?.parentContext,
                         jsDoc: originalEntity?.jsDoc,

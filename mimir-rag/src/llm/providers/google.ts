@@ -114,7 +114,7 @@ export class GoogleChatProvider extends BaseChatProvider {
             system: systemPrompt,
             prompt: userPrompt,
             temperature: this.config.temperature,
-            maxTokens: this.config.maxOutputTokens ?? 500,
+            maxOutputTokens: this.config.maxOutputTokens ?? 500,
         });
 
         return text;
