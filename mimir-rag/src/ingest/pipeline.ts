@@ -283,7 +283,8 @@ export async function runIngestionPipeline(
                 id: c.existingId,
                 filepath: c.newFilepath,
                 chunkId: c.newChunkId,
-                sourceType: c.newSourceType,
+                // Store only source types supported by the DB schema; Python is treated as generic code for now
+                sourceType: c.newSourceType === "python" ? "typescript" : c.newSourceType,
             }))
         );
         stats.movedChunks = movedChunks.length;
@@ -393,8 +394,7 @@ export async function runIngestionPipeline(
                     const codeChunk = entry.chunk.chunk;
                     // Find the original entity from parsedFile.entities using qualifiedName (handle split chunk titles)
                     const baseQualifiedName = codeChunk.qualifiedName.split('_part')[0];
-                    // @ts-expect-error parsedFile is a union with compatible shape (both TS and Python parsers expose .entities, .imports, etc.)
-                    const originalEntity = parsedFile.entities.find(
+                    const originalEntity = (parsedFile as any).entities.find(
                         (e: { qualifiedName: string }) => e.qualifiedName === baseQualifiedName
                     );
 
@@ -406,8 +406,7 @@ export async function runIngestionPipeline(
                         fullFileContent: document.content,
                         parentContext: (originalEntity as any)?.parentContext,
                         jsDoc: (originalEntity as any)?.jsDoc ?? (originalEntity as any)?.docstring,
-                        // @ts-expect-error imports exists on both parsed file types
-                        imports: parsedFile.imports,
+                        imports: (parsedFile as any).imports,
                         parameters: (originalEntity as any)?.parameters,
                         returnType: (originalEntity as any)?.returnType,
                     };

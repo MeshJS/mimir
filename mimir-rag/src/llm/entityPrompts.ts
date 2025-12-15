@@ -1,7 +1,6 @@
 import type { EntityContextInput } from "./types";
 
 const ENTITY_CONTEXT_SYSTEM_PROMPT = `You are a code documentation expert. Your task is to generate concise, informative context descriptions for code entities (for example, TypeScript or Python).
-const ENTITY_CONTEXT_SYSTEM_PROMPT = `You are a code documentation expert. Your task is to generate concise, informative context descriptions for code entities (for example, TypeScript or Python).
 
 For each code entity provided, write a short context (100-200 tokens) that:
 1. Explains the entity's purpose and role in the codebase

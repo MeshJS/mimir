@@ -198,7 +198,9 @@ async function collectPythonFilesLegacy(
     repo: string,
     branch: string,
     basePath: string,
-    headers: Record<string, string>
+    headers: Record<string, string>,
+    parserConfig?: ParserConfig,
+    includeDirectories?: string[]
 ): Promise<GithubPythonDocument[]> {
     const queue: string[] = [basePath];
     const visited = new Set<string>();
