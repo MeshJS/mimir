@@ -1,6 +1,6 @@
-# Mimir
+## Mimir
 
-A comprehensive **contextual RAG** (Retrieval Augmented Generation) system with MCP (Model Context Protocol) integration for both **documentation and TypeScript codebases**. Mimir ingests documentation and TypeScript code from GitHub repositories into a Supabase vector store and provides powerful querying capabilities through both REST API and MCP protocol. Unlike basic RAG, contextual RAG provides rich context around each code entity, including full file content, imports, and surrounding code.
+A comprehensive **contextual RAG** (Retrieval Augmented Generation) system with MCP (Model Context Protocol) integration for both **documentation and codebases**. Mimir ingests documentation and source code (currently **TypeScript** and **Python**, with more languages planned) from GitHub repositories into a Supabase vector store and provides powerful querying capabilities through both REST API and MCP protocol. Unlike basic RAG, contextual RAG provides rich context around each code entity, including full file content, imports, and surrounding code.
 
 ## Projects
 
@@ -8,12 +8,12 @@ This repository contains two main components:
 
 ### [mimir-rag](./mimir-rag)
 
-The core RAG server that handles ingestion and querying of both **documentation (MDX)** and **TypeScript codebases**.
+The core RAG server that handles ingestion and querying of both **documentation (MDX)** and **codebases** (TypeScript, Python, and easily extensible to more languages).
 
 **Features:**
-- Ingests documentation and TypeScript code from GitHub repositories into Supabase vector store
+- Ingests documentation and source code from GitHub repositories into Supabase vector store
 - Supports separate repositories for code and documentation
-- Automatically extracts TypeScript entities (functions, classes, interfaces, exported const functions)
+- Automatically extracts code entities (e.g., TypeScript: functions, classes, interfaces, exported const functions; Python: functions, classes, methods, module-level context)
 - Supports multiple LLM providers (OpenAI, Anthropic, Google, Mistral)
 - OpenAI-compatible chat completions endpoint (`/v1/chat/completions`)
 - MCP endpoint for semantic document search (`/mcp/ask`)
@@ -98,8 +98,8 @@ See the [mimir-mcp README](./mimir-mcp/README.md) for detailed setup instruction
 ## Workflow
 
 1. **Ingestion Phase:**
-   - mimir-rag fetches documentation (MDX) and TypeScript code from configured GitHub repository(ies)
-   - TypeScript files are parsed to extract entities (functions, classes, interfaces, exported const functions)
+   - mimir-rag fetches documentation (MDX) and code from configured GitHub repository(ies)
+   - Code files are parsed to extract language-specific entities (TypeScript entities, Python functions/classes/methods, etc.)
    - **Contextual RAG**: Each entity is enriched with surrounding context - full file content, imports, parent classes, and related code
    - Documents are chunked into smaller segments with rich contextual information
    - Chunks are embedded using your chosen LLM provider
@@ -121,9 +121,9 @@ See the [mimir-mcp README](./mimir-mcp/README.md) for detailed setup instruction
 
 ## Use Cases
 
-- **AI-Powered Code Assistant**: Let your AI coding assistant query your TypeScript codebase in real-time - find functions, classes, and understand code structure
+- **AI-Powered Code Assistant**: Let your AI coding assistant query your codebase in real-time - find functions, classes, and understand code structure (supports TypeScript, Python, and more)
 - **AI-Powered Documentation Assistant**: Let your AI coding assistant query your docs in real-time
-- **Codebase Understanding**: Index your entire TypeScript project - functions, classes, interfaces, and exported const functions
+- **Codebase Understanding**: Index your entire codebase - functions, classes, interfaces, and other language-specific entities
 - **Internal Knowledge Base**: Index internal wikis, API docs, or technical documentation
 - **Customer Support**: Provide accurate, context-aware answers from your documentation
 - **Developer Onboarding**: Help new developers quickly find information in your codebase and documentation
@@ -135,7 +135,7 @@ See the [mimir-mcp README](./mimir-mcp/README.md) for detailed setup instruction
 - **Node.js**: 20 or later
 - **Supabase**: Vector store for embeddings and document storage
 - **LLM Provider**: API key for OpenAI, Anthropic, Google, or Mistral
-- **GitHub**: Repository with documentation (MDX) and/or TypeScript code to ingest (optional)
+- **GitHub**: Repository with documentation (MDX) and/or code (TypeScript, Python, etc.) to ingest (optional)
 
 ## Getting Started
 

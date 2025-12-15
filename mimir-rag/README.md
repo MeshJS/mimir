@@ -1,6 +1,6 @@
-# mimir-rag
+## mimir-rag
 
-Utility CLI + API that ingests **documentation (MDX) and TypeScript codebases** into Supabase using **contextual RAG** and exposes OpenAI-compatible chat completions, MCP endpoints, and ingestion endpoints. Perfect for making your entire codebase and documentation queryable by AI assistants with rich contextual understanding.
+Utility CLI + API that ingests **documentation (MDX) and codebases** into Supabase using **contextual RAG** and exposes OpenAI-compatible chat completions, MCP endpoints, and ingestion endpoints. It currently supports **TypeScript** and **Python** code, and is designed to be easily extensible to additional languages. Perfect for making your entire codebase and documentation queryable by AI assistants with rich contextual understanding.
 
 ## Quick Start
 
@@ -139,9 +139,9 @@ Key configuration variables include:
 
 - **Server**: `MIMIR_SERVER_API_KEY` (required), `MIMIR_SERVER_GITHUB_WEBHOOK_SECRET`, `MIMIR_SERVER_FALLBACK_INGEST_INTERVAL_MINUTES`
 - **Supabase**: `MIMIR_SUPABASE_URL` (required), `MIMIR_SUPABASE_SERVICE_ROLE_KEY` (required), `MIMIR_SUPABASE_TABLE` (optional, default: "docs")
-- **GitHub**: 
+- **GitHub** (language-agnostic code + docs ingestion): 
   - `MIMIR_GITHUB_URL` - Main repository URL (fallback if separate repos not set)
-  - `MIMIR_GITHUB_CODE_URL` - Separate repository for TypeScript code (optional)
+  - `MIMIR_GITHUB_CODE_URL` - Separate repository for code (TypeScript, Python, etc.) (optional)
   - `MIMIR_GITHUB_DOCS_URL` - Separate repository for MDX documentation (optional)
   - `MIMIR_GITHUB_TOKEN`, `MIMIR_GITHUB_DIRECTORY`, `MIMIR_GITHUB_BRANCH`
   - `MIMIR_GITHUB_CODE_DIRECTORY`, `MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES` - Code repo specific settings
@@ -160,24 +160,24 @@ Key configuration variables include:
 
 ### Separate Code and Documentation Repositories
 
-You can configure separate repositories for TypeScript code and MDX documentation:
+You can configure separate repositories for code and MDX documentation. Code repositories can contain TypeScript, Python, or any other supported language – the ingestion pipeline is language-agnostic at the repository level.
 
 ```bash
 # Main repository (fallback)
 MIMIR_GITHUB_URL=https://github.com/user/main-repo
 
-# Separate code repository
+# Separate code repository (TypeScript, Python, etc.)
 MIMIR_GITHUB_CODE_URL=https://github.com/user/code-repo
 MIMIR_GITHUB_CODE_DIRECTORY=src
 MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES=src,lib
 
-# Separate documentation repository
+# Separate documentation repository (MD/MDX)
 MIMIR_GITHUB_DOCS_URL=https://github.com/user/docs-repo
 MIMIR_GITHUB_DOCS_DIRECTORY=docs
 MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES=docs,guides
 ```
 
-When configured, TypeScript files will be ingested from the code repository and MDX files from the docs repository. Source URLs for TypeScript files will automatically use the code repository URL.
+When configured, code files will be ingested from the code repository and MDX files from the docs repository. Source URLs for code files will automatically use the code repository URL.
 
 ### Parser Configuration
 
@@ -191,27 +191,34 @@ Control what gets extracted from your codebase:
   
   Example: `MIMIR_EXCLUDE_PATTERNS=*.test.ts,*.spec.ts,test/,__tests__/,tests/`
 
-### TypeScript Entity Extraction
+### Code Entity Extraction (TypeScript, Python, and more)
 
-mimir-rag automatically extracts and indexes TypeScript entities from your codebase:
+mimir-rag automatically extracts and indexes language-specific code entities from your codebase:
 
-- **Functions**: `export function myFunction() {}`
-- **Exported Const Functions**: `export const myFunction = () => {}` (always extracted)
-- **Classes**: `export class MyClass {}`
-- **Interfaces**: `export interface MyInterface {}`
-- **Types**: `export type MyType = ...`
-- **Enums**: `export enum MyEnum {}`
-- **Methods**: Class methods (if `MIMIR_EXTRACT_METHODS=true`)
+- **TypeScript**:
+  - Functions: `export function myFunction() {}`
+  - Exported const functions: `export const myFunction = () => {}` (always extracted)
+  - Classes: `export class MyClass {}`
+  - Interfaces: `export interface MyInterface {}`
+  - Types: `export type MyType = ...`
+  - Enums: `export enum MyEnum {}`
+  - Methods: class methods (if `MIMIR_EXTRACT_METHODS=true`)
+
+- **Python**:
+  - Top-level functions
+  - Classes
+  - Methods (functions inside classes)
+  - Module-level context entity for each file
 
 Each entity is stored as a separate chunk with **rich contextual information**:
 - Full code snippet
-- **Contextual RAG**: Surrounding file content, imports, and parent class context
-- JSDoc comments (if present)
-- Parameters and return types
+- **Contextual RAG**: Surrounding file content, imports, and parent/module/class context
+- Language-native doc comments (e.g., TypeScript JSDoc, Python docstrings)
+- Parameters and return types when available
 - Line numbers for source linking
 - GitHub URL for direct code access
 
-This contextual RAG approach allows the AI to understand not just the entity itself, but also how it fits into the larger codebase - what it imports, what it's part of, and how it's used. This enables more accurate and contextually-aware answers with direct links to source code.
+This contextual RAG approach allows the AI to understand not just the entity itself, but also how it fits into the larger codebase—what it imports, what it's part of, and how it's used. This enables more accurate and contextually-aware answers with direct links to source code.
 
 ## API Endpoints
 
