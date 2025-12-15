@@ -57,6 +57,7 @@ function buildSourcesFromChunks(chunks: RetrievedChunk[]): AskAiSource[] {
         } = chunk;
 
         const isDocFile =
+            sourceType === "doc" ||
             sourceType === "mdx" ||
             /\.(md|mdx)$/i.test(filepath);
 

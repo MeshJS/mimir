@@ -29,7 +29,8 @@ export interface ExistingChunkInfo {
     checksum: string;
     filepath: string;
     chunkId: number;
-    sourceType?: 'mdx' | 'typescript';
+    /** High-level source classification, plus legacy values for backward compatibility. */
+    sourceType?: 'doc' | 'code' | 'mdx' | 'typescript';
 }
 
 export class SupabaseVectorStore {
@@ -116,7 +117,7 @@ export class SupabaseVectorStore {
                     checksum: row.checksum,
                     filepath: row.filepath,
                     chunkId: row.chunk_id,
-                    sourceType: row.source_type as 'mdx' | 'typescript' | undefined,
+                    sourceType: row.source_type as 'doc' | 'code' | 'mdx' | 'typescript' | undefined,
                 };
                 const existing = map.get(row.checksum);
                 if (existing) {
@@ -236,7 +237,7 @@ export class SupabaseVectorStore {
         this.logger.info(`Reordered ${updates.length} chunk${updates.length === 1 ? "" : "s"}.`);
     }
 
-    async moveChunksAtomic(moves: Array<{ id: number; filepath: string; chunkId: number; sourceType?: 'mdx' | 'typescript' }>): Promise<void> {
+    async moveChunksAtomic(moves: Array<{ id: number; filepath: string; chunkId: number; sourceType?: 'doc' | 'code' | 'mdx' | 'typescript' }>): Promise<void> {
         if (moves.length === 0) {
             return;
         }
@@ -343,7 +344,7 @@ export class SupabaseVectorStore {
             githubUrl: row.github_url ?? undefined,
             docsUrl: row.docs_url ?? undefined,
             finalUrl: row.final_url ?? undefined,
-            sourceType: (row.source_type as 'mdx' | 'typescript' | undefined) ?? 'mdx',
+            sourceType: (row.source_type as 'doc' | 'code' | 'mdx' | 'typescript' | undefined) ?? 'mdx',
             entityType: row.entity_type ?? undefined,
             startLine: row.start_line ?? undefined,
             endLine: row.end_line ?? undefined,
@@ -378,7 +379,7 @@ export class SupabaseVectorStore {
             githubUrl: row.github_url ?? undefined,
             docsUrl: row.docs_url ?? undefined,
             finalUrl: row.final_url ?? undefined,
-            sourceType: (row.source_type as 'mdx' | 'typescript' | undefined) ?? 'mdx',
+            sourceType: (row.source_type as 'doc' | 'code' | 'mdx' | 'typescript' | undefined) ?? 'mdx',
             entityType: row.entity_type ?? undefined,
             startLine: row.start_line ?? undefined,
             endLine: row.end_line ?? undefined,

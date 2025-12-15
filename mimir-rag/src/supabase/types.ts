@@ -9,7 +9,16 @@ export interface DocumentChunk {
     githubUrl?: string;
     docsUrl?: string;
     finalUrl?: string;
-    sourceType?: 'mdx' | 'typescript' | 'python';
+    /**
+     * High-level source classification.
+     * - 'doc'  : documentation content (e.g., MD/MDX)
+     * - 'code' : source code content (any language)
+     *
+     * Older rows may still use 'mdx' | 'typescript' | 'python' for backward compatibility.
+     */
+    sourceType?: 'doc' | 'code' | 'mdx' | 'typescript' | 'python';
+    /** Optional language identifier for code/doc chunks (e.g., 'typescript', 'python', 'mdx'). */
+    language?: string;
     entityType?: string;
     startLine?: number;
     endLine?: number;

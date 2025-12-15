@@ -19,33 +19,35 @@ interface PendingEmbeddingChunk {
     checksum: string;
     content: string;
     contextualText: string;
-    sourceType: 'mdx' | 'typescript' | 'python';
+    /** High-level source classification ('doc' or 'code') */
+    sourceType: 'doc' | 'code';
+    /** Optional language identifier (e.g., 'mdx', 'typescript', 'python', 'go') */
+    language?: string;
     entityType?: string;
     startLine?: number;
     endLine?: number;
     githubUrl?: string;
 }
 
-/** Unified chunk type for both MDX and TypeScript/Python */
+/** Unified chunk type for both docs (MDX) and code entities */
 type UnifiedChunk = 
-    | { sourceType: 'mdx'; chunk: MdxChunk }
-    | { sourceType: 'typescript'; chunk: EntityChunk }
-    | { sourceType: 'python'; chunk: EntityChunk };
+    | { sourceType: 'doc'; chunk: MdxChunk }
+    | { sourceType: 'code'; chunk: EntityChunk };
 
 /** Target location for a chunk in the new state */
 interface TargetChunkLocation {
     filepath: string;
     chunkId: number;
     chunk: UnifiedChunk;
-    sourceType: 'mdx' | 'typescript' | 'python';
+    sourceType: 'doc' | 'code';
     githubUrl?: string;
 }
 
 /** Classification of how a chunk should be handled */
 type ChunkClassification =
     | { type: "unchanged"; existingId: number }
-    | { type: "moved"; existingId: number; newFilepath: string; newChunkId: number; newSourceType: 'mdx' | 'typescript' | 'python' }
-    | { type: "new"; chunk: UnifiedChunk; filepath: string; chunkId: number; sourceType: 'mdx' | 'typescript' | 'python'; githubUrl?: string };
+    | { type: "moved"; existingId: number; newFilepath: string; newChunkId: number; newSourceType: 'doc' | 'code' }
+    | { type: "new"; chunk: UnifiedChunk; filepath: string; chunkId: number; sourceType: 'doc' | 'code'; githubUrl?: string };
 
 export interface IngestionPipelineStats {
     processedDocuments: number;
@@ -124,7 +126,7 @@ export async function runIngestionPipeline(
 
             stats.processedDocuments += 1;
             documentChunksMap.set(filepath, {
-                chunks: preparedChunks.map(chunk => ({ sourceType: 'mdx' as const, chunk })),
+                chunks: preparedChunks.map(chunk => ({ sourceType: 'doc' as const, chunk })),
             });
 
             preparedChunks.forEach((chunk, index) => {
@@ -132,8 +134,8 @@ export async function runIngestionPipeline(
                 targetState.set(chunk.checksum, {
                     filepath,
                     chunkId: index,
-                    chunk: { sourceType: 'mdx', chunk },
-                    sourceType: 'mdx',
+                    chunk: { sourceType: 'doc', chunk },
+                    sourceType: 'doc',
                     githubUrl: links.githubUrl,
                 });
                 allChecksums.push(chunk.checksum);
@@ -165,7 +167,7 @@ export async function runIngestionPipeline(
             }
 
             stats.processedDocuments += 1;
-            const sourceType: 'typescript' | 'python' = document.type;
+            const sourceType: 'code' = 'code';
             documentChunksMap.set(filepath, {
                 chunks: chunkedFile.chunks.map(chunk => ({ sourceType, chunk })),
                 parsedFile,
@@ -283,8 +285,7 @@ export async function runIngestionPipeline(
                 id: c.existingId,
                 filepath: c.newFilepath,
                 chunkId: c.newChunkId,
-                // Store only source types supported by the DB schema; Python is treated as generic code for now
-                sourceType: c.newSourceType === "python" ? "typescript" : c.newSourceType,
+                sourceType: c.newSourceType,
             }))
         );
         stats.movedChunks = movedChunks.length;
@@ -308,7 +309,7 @@ export async function runIngestionPipeline(
     }
 
     // Group new chunks by filepath for context generation
-    const newChunksByFilepath = new Map<string, Array<{ chunk: UnifiedChunk; chunkId: number; sourceType: 'mdx' | 'typescript' | 'python'; githubUrl?: string }>>();
+    const newChunksByFilepath = new Map<string, Array<{ chunk: UnifiedChunk; chunkId: number; sourceType: 'doc' | 'code'; githubUrl?: string }>>();
     for (const c of newChunks) {
         const existing = newChunksByFilepath.get(c.filepath) ?? [];
         existing.push({ chunk: c.chunk, chunkId: c.chunkId, sourceType: c.sourceType, githubUrl: c.githubUrl });
@@ -334,13 +335,14 @@ export async function runIngestionPipeline(
             `Generating context for ${chunks.length} new chunk${chunks.length === 1 ? "" : "s"}.`
         );
 
-        const sourceType = chunks[0]?.sourceType ?? document.type;
+        const sourceType: 'doc' | 'code' =
+            chunks[0]?.sourceType ?? (document.type === 'mdx' ? 'doc' : 'code');
         const fileEntry = documentChunksMap.get(filepath);
 
-        if (sourceType === 'mdx') {
+        if (sourceType === 'doc') {
             // MDX context generation
             const chunkContents = chunks.map((entry) => {
-                if (entry.chunk.sourceType === 'mdx') {
+                if (entry.chunk.sourceType === 'doc') {
                     return entry.chunk.chunk.chunkContent;
                 }
                 throw new Error(`Mismatched chunk type for MDX file ${filepath}`);
@@ -355,7 +357,7 @@ export async function runIngestionPipeline(
                     }
 
                     chunks.forEach((entry, index) => {
-                        if (entry.chunk.sourceType === 'mdx') {
+                        if (entry.chunk.sourceType === 'doc') {
                             const contextHeader = contexts[index]?.trim() ?? "";
                             const contextualText = `${contextHeader}---${entry.chunk.chunk.chunkContent}`;
                             const links = resolveSourceLinks(filepath, entry.chunk.chunk.chunkTitle, appConfig, document.sourceUrl);
@@ -366,7 +368,8 @@ export async function runIngestionPipeline(
                                 checksum: entry.chunk.chunk.checksum,
                                 content: entry.chunk.chunk.chunkContent,
                                 contextualText,
-                                sourceType: 'mdx',
+                                sourceType: 'doc',
+                                language: 'mdx',
                                 githubUrl: links.githubUrl,
                             });
                         }
@@ -381,8 +384,8 @@ export async function runIngestionPipeline(
                 });
 
             contextTasks.push(contextTask);
-        } else if (sourceType === 'typescript' || sourceType === 'python') {
-            // Code entity context generation (TypeScript / Python)
+        } else if (sourceType === 'code') {
+            // Code entity context generation (any language)
             const parsedFile = fileEntry?.parsedFile;
             if (!parsedFile) {
                 fileLogger.warn(`Parsed file entry for ${filepath} not found. Skipping context generation.`);
@@ -390,7 +393,7 @@ export async function runIngestionPipeline(
             }
 
             const entityInputs: EntityContextInput[] = chunks.map((entry) => {
-                if (entry.chunk.sourceType === 'typescript' || entry.chunk.sourceType === 'python') {
+                if (entry.chunk.sourceType === 'code') {
                     const codeChunk = entry.chunk.chunk;
                     // Find the original entity from parsedFile.entities using qualifiedName (handle split chunk titles)
                     const baseQualifiedName = codeChunk.qualifiedName.split('_part')[0];
@@ -424,7 +427,7 @@ export async function runIngestionPipeline(
                     }
 
                     chunks.forEach((entry, index) => {
-                        if (entry.chunk.sourceType === 'typescript' || entry.chunk.sourceType === 'python') {
+                        if (entry.chunk.sourceType === 'code') {
                             const contextHeader = contexts[index]?.trim() ?? "";
                             const contextualText = contextHeader
                                 ? `${contextHeader}\n---\n${entry.chunk.chunk.content}`
@@ -436,7 +439,8 @@ export async function runIngestionPipeline(
                                 checksum: entry.chunk.chunk.checksum,
                                 content: entry.chunk.chunk.content,
                                 contextualText,
-                                sourceType,
+                                sourceType: 'code',
+                                language: document.type,
                                 entityType: entry.chunk.chunk.entityType,
                                 startLine: entry.chunk.chunk.startLine,
                                 endLine: entry.chunk.chunk.endLine,
