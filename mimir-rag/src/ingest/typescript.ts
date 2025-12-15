@@ -6,27 +6,12 @@ import {
     DEFAULT_BRANCH,
     buildSourceUrl,
     computeRelativePath,
-    encodeRepoPath,
     joinRepoPaths,
     normalizeRepoPath,
     parseGithubUrl,
 } from "../github/utils";
 import { getLogger } from "../utils/logger";
-import pLimit from "p-limit";
-
-const GITHUB_API_BASE = "https://api.github.com";
-const RAW_GITHUB_BASE = "https://raw.githubusercontent.com";
-const USER_AGENT = "mimir-rag";
-const FILE_DOWNLOAD_CONCURRENCY = 8;
-
-interface GithubTreeEntry {
-    path: string;
-    mode: string;
-    type: "blob" | "tree" | "commit";
-    sha: string;
-    size?: number;
-    url: string;
-}
+import { collectCodeFilesViaTree, collectCodeFilesLegacy } from "./github/common";
 
 export interface GithubTypescriptDocument {
     /** Full path in the repository */
@@ -61,7 +46,7 @@ export async function downloadGithubTypescriptFiles(appConfig: AppConfig): Promi
 
     const headers: Record<string, string> = {
         Accept: "application/vnd.github+json",
-        "User-Agent": USER_AGENT,
+        "User-Agent": "mimir-rag",
     };
 
     if (token) {
@@ -106,13 +91,33 @@ async function collectTypescriptFiles(
     includeDirectories?: string[]
 ): Promise<GithubTypescriptDocument[]> {
     try {
-        return await collectTypescriptFilesViaTree(owner, repo, branch, basePath, headers, parserConfig, includeDirectories);
+        const docs = await collectCodeFilesViaTree(
+            owner,
+            repo,
+            branch,
+            basePath,
+            headers,
+            isTypescriptFile,
+            parserConfig,
+            includeDirectories
+        );
+        return docs as GithubTypescriptDocument[];
     } catch (error) {
         getLogger().warn(
             { err: error },
             "Failed to use Git tree API for TypeScript discovery. Falling back to directory walk."
         );
-        return collectTypescriptFilesLegacy(owner, repo, branch, basePath, headers, parserConfig, includeDirectories);
+        const docs = await collectCodeFilesLegacy(
+            owner,
+            repo,
+            branch,
+            basePath,
+            headers,
+            isTypescriptFile,
+            parserConfig,
+            includeDirectories
+        );
+        return docs as GithubTypescriptDocument[];
     }
 }
 
@@ -125,55 +130,17 @@ async function collectTypescriptFilesViaTree(
     parserConfig?: ParserConfig,
     includeDirectories?: string[]
 ): Promise<GithubTypescriptDocument[]> {
-    const tree = await fetchRepoTree(owner, repo, branch, headers);
-    const normalizedBase = normalizeRepoPath(basePath);
-    const prefix = normalizedBase ? `${normalizedBase}/` : "";
-    const excludePatterns = parserConfig?.excludePatterns ?? [];
-
-    const tsEntries = tree.filter((entry) => {
-        if (entry.type !== "blob") {
-            return false;
-        }
-        if (!isTypescriptFile(entry.path)) {
-            return false;
-        }
-        if (shouldExcludeFile(entry.path, excludePatterns)) {
-            return false;
-        }
-        
-        // Check if file is within base path
-        if (normalizedBase) {
-            if (entry.path !== normalizedBase && !entry.path.startsWith(prefix)) {
-                return false;
-            }
-        }
-        
-        // If includeDirectories is specified, only include files from those directories
-        if (includeDirectories && includeDirectories.length > 0) {
-            return shouldIncludeFile(entry.path, normalizedBase, includeDirectories);
-        }
-        
-        return true;
-    });
-
-    const limit = pLimit(FILE_DOWNLOAD_CONCURRENCY);
-    const documents = await Promise.all(
-        tsEntries.map((entry) =>
-            limit(async () => {
-                const content = await downloadRawFile(owner, repo, branch, entry.path, headers);
-                return {
-                    path: entry.path,
-                    relativePath: "",
-                    content,
-                    sha: entry.sha,
-                    size: entry.size ?? Buffer.byteLength(content, "utf8"),
-                    sourceUrl: "",
-                } as GithubTypescriptDocument;
-            })
-        )
+    const docs = await collectCodeFilesViaTree(
+        owner,
+        repo,
+        branch,
+        basePath,
+        headers,
+        isTypescriptFile,
+        parserConfig,
+        includeDirectories
     );
-
-    return documents;
+    return docs as GithubTypescriptDocument[];
 }
 
 async function collectTypescriptFilesLegacy(
@@ -185,228 +152,17 @@ async function collectTypescriptFilesLegacy(
     parserConfig?: ParserConfig,
     includeDirectories?: string[]
 ): Promise<GithubTypescriptDocument[]> {
-    const queue: string[] = [basePath];
-    const visited = new Set<string>();
-    const tsFiles: GithubTypescriptDocument[] = [];
-    const excludePatterns = parserConfig?.excludePatterns ?? [];
-    const normalizedBase = normalizeRepoPath(basePath);
-
-    while (queue.length > 0) {
-        const currentPath = queue.shift() ?? "";
-        const normalizedCurrent = normalizeRepoPath(currentPath);
-
-        if (visited.has(normalizedCurrent)) {
-            continue;
-        }
-        visited.add(normalizedCurrent);
-
-        const contents = await fetchContents(owner, repo, branch, normalizedCurrent, headers);
-
-        if (Array.isArray(contents)) {
-            for (const entry of contents) {
-                if (entry.type === "dir") {
-                    queue.push(entry.path);
-                    continue;
-                }
-
-                if (entry.type === "file" && isTypescriptFile(entry.name)) {
-                    if (shouldExcludeFile(entry.path, excludePatterns)) {
-                        continue;
-                    }
-                    
-                    // Check include directories if specified
-                    if (includeDirectories && includeDirectories.length > 0) {
-                        if (!shouldIncludeFile(entry.path, normalizedBase, includeDirectories)) {
-                            continue;
-                        }
-                    }
-
-                    const file = await fetchFile(owner, repo, branch, entry.path, headers);
-                    const content = await resolveFileContent(file, headers);
-
-                    tsFiles.push({
-                        path: file.path,
-                        relativePath: "",
-                        content,
-                        sha: file.sha,
-                        size: file.size,
-                        sourceUrl: "",
-                    });
-                }
-            }
-        } else if (contents.type === "file" && isTypescriptFile(contents.name)) {
-            if (shouldExcludeFile(contents.path, excludePatterns)) {
-                continue;
-            }
-            
-            // Check include directories if specified
-            if (includeDirectories && includeDirectories.length > 0) {
-                if (!shouldIncludeFile(contents.path, normalizedBase, includeDirectories)) {
-                    continue;
-                }
-            }
-            
-            const content = await resolveFileContent(contents, headers);
-            tsFiles.push({
-                path: contents.path,
-                relativePath: "",
-                content,
-                sha: contents.sha,
-                size: contents.size,
-                sourceUrl: "",
-            });
-        }
-    }
-
-    return tsFiles;
-}
-
-interface GithubDirectoryEntry {
-    type: string;
-    name: string;
-    path: string;
-    sha: string;
-    size: number;
-    download_url: string | null;
-    html_url: string;
-}
-
-interface GithubFileResponse extends GithubDirectoryEntry {
-    type: "file";
-    encoding?: string;
-    content?: string;
-}
-
-async function fetchRepoTree(
-    owner: string,
-    repo: string,
-    branch: string,
-    headers: Record<string, string>
-): Promise<GithubTreeEntry[]> {
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
-    const response = await fetch(url, { headers });
-
-    if (!response.ok) {
-        throw new Error(
-            `Failed to fetch repo tree for ${owner}/${repo}@${branch}: ${response.status} ${response.statusText}`
-        );
-    }
-
-    const payload = (await response.json()) as { tree?: GithubTreeEntry[] };
-    if (!Array.isArray(payload.tree)) {
-        throw new Error(`Git tree response for ${owner}/${repo}@${branch} is malformed.`);
-    }
-
-    return payload.tree;
-}
-
-async function downloadRawFile(
-    owner: string,
-    repo: string,
-    branch: string,
-    repoPath: string,
-    headers: Record<string, string>
-): Promise<string> {
-    const encodedPath = encodeRepoPath(repoPath);
-    const url = `${RAW_GITHUB_BASE}/${owner}/${repo}/${encodeURIComponent(branch)}/${encodedPath}`;
-    const rawHeaders: Record<string, string> = {
-        "User-Agent": USER_AGENT,
-    };
-
-    if (headers["Authorization"]) {
-        rawHeaders["Authorization"] = headers["Authorization"];
-    }
-
-    const response = await fetch(url, { headers: rawHeaders });
-
-    if (!response.ok) {
-        throw new Error(
-            `Failed to download raw contents for "${repoPath}" from ${owner}/${repo}@${branch}: ${response.status} ${response.statusText}`
-        );
-    }
-
-    return response.text();
-}
-
-async function fetchContents(
-    owner: string,
-    repo: string,
-    branch: string,
-    repoPath: string,
-    headers: Record<string, string>
-): Promise<GithubDirectoryEntry[] | GithubFileResponse> {
-    const encodedPath = encodeRepoPath(repoPath);
-    const pathSuffix = encodedPath ? `/${encodedPath}` : "";
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/contents${pathSuffix}?ref=${encodeURIComponent(branch)}`;
-
-    const response = await fetch(url, { headers });
-
-    if (response.status === 404) {
-        throw new Error(`Path "${repoPath || "/"}" does not exist in ${owner}/${repo}@${branch}`);
-    }
-
-    if (!response.ok) {
-        throw new Error(
-            `Failed to read "${repoPath || "/"}" from ${owner}/${repo}@${branch}: ${response.status} ${response.statusText}`
-        );
-    }
-
-    return response.json() as Promise<GithubDirectoryEntry[] | GithubFileResponse>;
-}
-
-async function fetchFile(
-    owner: string,
-    repo: string,
-    branch: string,
-    repoPath: string,
-    headers: Record<string, string>
-): Promise<GithubFileResponse> {
-    const encodedPath = encodeRepoPath(repoPath);
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`;
-
-    const response = await fetch(url, { headers });
-
-    if (!response.ok) {
-        throw new Error(
-            `Failed to download "${repoPath}" from ${owner}/${repo}@${branch}: ${response.status} ${response.statusText}`
-        );
-    }
-
-    const payload = (await response.json()) as GithubFileResponse;
-
-    if (payload.type !== "file") {
-        throw new Error(
-            `Expected a file response when downloading "${repoPath}", received type "${payload.type}" instead.`
-        );
-    }
-
-    return payload;
-}
-
-async function resolveFileContent(file: GithubFileResponse, headers: Record<string, string>): Promise<string> {
-    if (file.encoding === "base64" && file.content) {
-        return Buffer.from(file.content, "base64").toString("utf-8");
-    }
-
-    if (file.download_url) {
-        const rawHeaders: Record<string, string> = {
-            "User-Agent": USER_AGENT,
-        };
-
-        if (headers["Authorization"]) {
-            rawHeaders["Authorization"] = headers["Authorization"];
-        }
-
-        const response = await fetch(file.download_url, { headers: rawHeaders });
-
-        if (!response.ok) {
-            throw new Error(`Unable to download raw contents for "${file.path}": ${response.status} ${response.statusText}`);
-        }
-
-        return response.text();
-    }
-
-    throw new Error(`Unable to retrieve the contents of "${file.path}".`);
+    const docs = await collectCodeFilesLegacy(
+        owner,
+        repo,
+        branch,
+        basePath,
+        headers,
+        isTypescriptFile,
+        parserConfig,
+        includeDirectories
+    );
+    return docs as GithubTypescriptDocument[];
 }
 
 /**
