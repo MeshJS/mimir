@@ -1,6 +1,7 @@
 import type { EntityContextInput } from "./types";
 
-const ENTITY_CONTEXT_SYSTEM_PROMPT = `You are a code documentation expert. Your task is to generate concise, informative context descriptions for TypeScript code entities.
+const ENTITY_CONTEXT_SYSTEM_PROMPT = `You are a code documentation expert. Your task is to generate concise, informative context descriptions for code entities (for example, TypeScript or Python).
+const ENTITY_CONTEXT_SYSTEM_PROMPT = `You are a code documentation expert. Your task is to generate concise, informative context descriptions for code entities (for example, TypeScript or Python).
 
 For each code entity provided, write a short context (100-200 tokens) that:
 1. Explains the entity's purpose and role in the codebase
@@ -40,10 +41,10 @@ export function buildBatchContextPrompt(entities: EntityContextInput[], fileCont
         return `--- Entity ${index + 1} ---\n${buildEntityContextPrompt(entity)}`;
     }).join("\n\n");
 
-    return `Generate context descriptions for the following ${entities.length} TypeScript entities from the same file.
+    return `Generate context descriptions for the following ${entities.length} code entities from the same file.
 
 File Context (truncated if large):
-\`\`\`typescript
+\`\`\`
 ${truncateFileContent(fileContent, 2000)}
 \`\`\`
 

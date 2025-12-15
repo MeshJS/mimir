@@ -14,6 +14,7 @@ import {
 import { getLogger } from "../utils/logger";
 import pLimit from "p-limit";
 import { downloadGithubTypescriptFiles, GithubTypescriptDocument } from "./typescript";
+import { downloadGithubPythonFiles, GithubPythonDocument } from "./python";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const RAW_GITHUB_BASE = "https://raw.githubusercontent.com";
@@ -54,7 +55,7 @@ export interface GithubMdxDocument {
     sourceUrl: string;
 }
 
-export type GithubDocumentType = "mdx" | "typescript";
+export type GithubDocumentType = "mdx" | "typescript" | "python";
 
 export interface GithubDocument {
     type: GithubDocumentType;
@@ -419,7 +420,7 @@ export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubD
         }
     }
 
-    // Download TypeScript files from code repo
+    // Download TypeScript and Python files from code repo
     if (codeUrl) {
         try {
             // Use code-specific config, falling back to main config
@@ -434,14 +435,26 @@ export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubD
                     includeDirectories: codeIncludeDirs,
                 } 
             };
-            const tsFiles = await downloadGithubTypescriptFiles(codeConfig);
-            documents.push(...tsFiles.map((doc) => ({
-                type: "typescript" as const,
-                ...doc,
-            })));
-            logger.info(`Found ${tsFiles.length} TypeScript file${tsFiles.length === 1 ? "" : "s"} from ${codeUrl}.`);
+
+            const [tsFiles, pyFiles] = await Promise.all([
+                downloadGithubTypescriptFiles(codeConfig),
+                downloadGithubPythonFiles(codeConfig),
+            ]);
+
+            documents.push(
+                ...tsFiles.map((doc) => ({
+                    type: "typescript" as const,
+                    ...doc,
+                })),
+                ...pyFiles.map((doc) => ({
+                    type: "python" as const,
+                    ...doc,
+                })),
+            );
+
+            logger.info(`Found ${tsFiles.length} TypeScript file${tsFiles.length === 1 ? "" : "s"} and ${pyFiles.length} Python file${pyFiles.length === 1 ? "" : "s"} from ${codeUrl}.`);
         } catch (error) {
-            logger.warn({ err: error, url: codeUrl }, "Failed to download TypeScript files; continuing with MDX files only.");
+            logger.warn({ err: error, url: codeUrl }, "Failed to download TypeScript/Python files; continuing with MDX files only.");
         }
     }
 

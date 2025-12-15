@@ -5,6 +5,7 @@ import { getLogger } from "../utils/logger";
 import { downloadGithubFiles, downloadGithubMdxFiles, GithubMdxDocument, GithubDocument, GithubDocumentType } from "./github";
 import { chunkMdxFile, enforceChunkTokenLimit, MdxChunk } from "./chunker";
 import { parseTypescriptFile, ParsedFile } from "./astParser";
+import { parsePythonFile, ParsedPythonFile } from "./pythonAstParser";
 import { chunkParsedFile, EntityChunk } from "./entityChunker";
 import type { SupabaseVectorStore } from "../supabase/client";
 import type { DocumentChunk } from "../supabase/types";
@@ -18,32 +19,33 @@ interface PendingEmbeddingChunk {
     checksum: string;
     content: string;
     contextualText: string;
-    sourceType: 'mdx' | 'typescript';
+    sourceType: 'mdx' | 'typescript' | 'python';
     entityType?: string;
     startLine?: number;
     endLine?: number;
     githubUrl?: string;
 }
 
-/** Unified chunk type for both MDX and TypeScript */
+/** Unified chunk type for both MDX and TypeScript/Python */
 type UnifiedChunk = 
     | { sourceType: 'mdx'; chunk: MdxChunk }
-    | { sourceType: 'typescript'; chunk: EntityChunk };
+    | { sourceType: 'typescript'; chunk: EntityChunk }
+    | { sourceType: 'python'; chunk: EntityChunk };
 
 /** Target location for a chunk in the new state */
 interface TargetChunkLocation {
     filepath: string;
     chunkId: number;
     chunk: UnifiedChunk;
-    sourceType: 'mdx' | 'typescript';
+    sourceType: 'mdx' | 'typescript' | 'python';
     githubUrl?: string;
 }
 
 /** Classification of how a chunk should be handled */
 type ChunkClassification =
     | { type: "unchanged"; existingId: number }
-    | { type: "moved"; existingId: number; newFilepath: string; newChunkId: number; newSourceType: 'mdx' | 'typescript' }
-    | { type: "new"; chunk: UnifiedChunk; filepath: string; chunkId: number; sourceType: 'mdx' | 'typescript'; githubUrl?: string };
+    | { type: "moved"; existingId: number; newFilepath: string; newChunkId: number; newSourceType: 'mdx' | 'typescript' | 'python' }
+    | { type: "new"; chunk: UnifiedChunk; filepath: string; chunkId: number; sourceType: 'mdx' | 'typescript' | 'python'; githubUrl?: string };
 
 export interface IngestionPipelineStats {
     processedDocuments: number;
@@ -82,13 +84,14 @@ export async function runIngestionPipeline(
 
     const mdxCount = documents.filter(d => d.type === 'mdx').length;
     const tsCount = documents.filter(d => d.type === 'typescript').length;
-    ingestionLogger.info(`Processing ${documents.length} document${documents.length === 1 ? "" : "s"} (${mdxCount} MDX, ${tsCount} TypeScript).`);
+    const pyCount = documents.filter(d => d.type === 'python').length;
+    ingestionLogger.info(`Processing ${documents.length} document${documents.length === 1 ? "" : "s"} (${mdxCount} MDX, ${tsCount} TypeScript, ${pyCount} Python).`);
 
     // Collect target state from all documents: checksum -> target location
     const targetState = new Map<string, TargetChunkLocation>();
     const allChecksums: string[] = [];
     const documentMap = new Map<string, GithubDocument>(); // filepath -> document
-    const documentChunksMap = new Map<string, { chunks: UnifiedChunk[]; parsedFile?: ParsedFile }>(); // filepath -> {chunks, parsedFile}
+    const documentChunksMap = new Map<string, { chunks: UnifiedChunk[]; parsedFile?: ParsedFile | ParsedPythonFile }>(); // filepath -> {chunks, parsedFile}
 
     for (const document of documents) {
         const filepath = document.relativePath || document.path;
@@ -135,18 +138,22 @@ export async function runIngestionPipeline(
                 });
                 allChecksums.push(chunk.checksum);
             });
-        } else if (document.type === 'typescript') {
-            // Process TypeScript files
-            let parsedFile: ParsedFile;
+        } else if (document.type === 'typescript' || document.type === 'python') {
+            // Process TypeScript and Python files
+            let parsedFile: ParsedFile | ParsedPythonFile;
             try {
-                parsedFile = parseTypescriptFile(filepath, document.content, appConfig.parser);
+                if (document.type === 'typescript') {
+                    parsedFile = parseTypescriptFile(filepath, document.content, appConfig.parser);
+                } else {
+                    parsedFile = parsePythonFile(filepath, document.content);
+                }
             } catch (error) {
-                fileLogger.error({ err: error }, "Failed to parse TypeScript file. Skipping.");
+                fileLogger.error({ err: error }, `Failed to parse ${document.type} file. Skipping.`);
                 stats.skippedDocuments += 1;
                 continue;
             }
 
-            const chunkedFile = chunkParsedFile(parsedFile, {
+            const chunkedFile = chunkParsedFile(parsedFile as ParsedFile, {
                 tokenLimit: chunkTokenLimit,
                 model: llm.embedding.config.model,
             });
@@ -158,8 +165,9 @@ export async function runIngestionPipeline(
             }
 
             stats.processedDocuments += 1;
+            const sourceType: 'typescript' | 'python' = document.type;
             documentChunksMap.set(filepath, {
-                chunks: chunkedFile.chunks.map(chunk => ({ sourceType: 'typescript' as const, chunk })),
+                chunks: chunkedFile.chunks.map(chunk => ({ sourceType, chunk })),
                 parsedFile,
             });
 
@@ -168,8 +176,8 @@ export async function runIngestionPipeline(
                 targetState.set(chunk.checksum, {
                     filepath,
                     chunkId: index,
-                    chunk: { sourceType: 'typescript', chunk },
-                    sourceType: 'typescript',
+                    chunk: { sourceType, chunk },
+                    sourceType,
                     githubUrl: links.githubUrl,
                 });
                 allChecksums.push(chunk.checksum);
@@ -299,7 +307,7 @@ export async function runIngestionPipeline(
     }
 
     // Group new chunks by filepath for context generation
-    const newChunksByFilepath = new Map<string, Array<{ chunk: UnifiedChunk; chunkId: number; sourceType: 'mdx' | 'typescript'; githubUrl?: string }>>();
+    const newChunksByFilepath = new Map<string, Array<{ chunk: UnifiedChunk; chunkId: number; sourceType: 'mdx' | 'typescript' | 'python'; githubUrl?: string }>>();
     for (const c of newChunks) {
         const existing = newChunksByFilepath.get(c.filepath) ?? [];
         existing.push({ chunk: c.chunk, chunkId: c.chunkId, sourceType: c.sourceType, githubUrl: c.githubUrl });
@@ -372,8 +380,8 @@ export async function runIngestionPipeline(
                 });
 
             contextTasks.push(contextTask);
-        } else if (sourceType === 'typescript') {
-            // TypeScript entity context generation
+        } else if (sourceType === 'typescript' || sourceType === 'python') {
+            // Code entity context generation (TypeScript / Python)
             const parsedFile = fileEntry?.parsedFile;
             if (!parsedFile) {
                 fileLogger.warn(`Parsed file entry for ${filepath} not found. Skipping context generation.`);
@@ -381,27 +389,30 @@ export async function runIngestionPipeline(
             }
 
             const entityInputs: EntityContextInput[] = chunks.map((entry) => {
-                if (entry.chunk.sourceType === 'typescript') {
-                    const tsChunk = entry.chunk.chunk;
-                    // Find the original entity from parsedFile.entities using qualifiedName
+                if (entry.chunk.sourceType === 'typescript' || entry.chunk.sourceType === 'python') {
+                    const codeChunk = entry.chunk.chunk;
+                    // Find the original entity from parsedFile.entities using qualifiedName (handle split chunk titles)
+                    const baseQualifiedName = codeChunk.qualifiedName.split('_part')[0];
+                    // @ts-expect-error parsedFile is a union with compatible shape (both TS and Python parsers expose .entities, .imports, etc.)
                     const originalEntity = parsedFile.entities.find(
-                        e => e.qualifiedName === tsChunk.qualifiedName.split('_part')[0] // Handle split chunk titles
+                        (e: { qualifiedName: string }) => e.qualifiedName === baseQualifiedName
                     );
 
                     return {
-                        entityCode: tsChunk.content,
-                        entityType: tsChunk.entityType,
-                        entityName: originalEntity?.name ?? tsChunk.qualifiedName,
-                        qualifiedName: originalEntity?.qualifiedName ?? tsChunk.qualifiedName,
+                        entityCode: codeChunk.content,
+                        entityType: codeChunk.entityType,
+                        entityName: (originalEntity as any)?.name ?? codeChunk.qualifiedName,
+                        qualifiedName: (originalEntity as any)?.qualifiedName ?? codeChunk.qualifiedName,
                         fullFileContent: document.content,
-                        parentContext: originalEntity?.parentContext,
-                        jsDoc: originalEntity?.jsDoc,
+                        parentContext: (originalEntity as any)?.parentContext,
+                        jsDoc: (originalEntity as any)?.jsDoc ?? (originalEntity as any)?.docstring,
+                        // @ts-expect-error imports exists on both parsed file types
                         imports: parsedFile.imports,
-                        parameters: originalEntity?.parameters,
-                        returnType: originalEntity?.returnType,
+                        parameters: (originalEntity as any)?.parameters,
+                        returnType: (originalEntity as any)?.returnType,
                     };
                 }
-                throw new Error(`Mismatched chunk type for TypeScript file ${filepath}`);
+                throw new Error(`Mismatched chunk type for code file ${filepath}`);
             });
 
             const contextTask = llm.chat
@@ -414,7 +425,7 @@ export async function runIngestionPipeline(
                     }
 
                     chunks.forEach((entry, index) => {
-                        if (entry.chunk.sourceType === 'typescript') {
+                        if (entry.chunk.sourceType === 'typescript' || entry.chunk.sourceType === 'python') {
                             const contextHeader = contexts[index]?.trim() ?? "";
                             const contextualText = contextHeader
                                 ? `${contextHeader}\n---\n${entry.chunk.chunk.content}`
@@ -426,7 +437,7 @@ export async function runIngestionPipeline(
                                 checksum: entry.chunk.chunk.checksum,
                                 content: entry.chunk.chunk.content,
                                 contextualText,
-                                sourceType: 'typescript',
+                                sourceType,
                                 entityType: entry.chunk.chunk.entityType,
                                 startLine: entry.chunk.chunk.startLine,
                                 endLine: entry.chunk.chunk.endLine,
