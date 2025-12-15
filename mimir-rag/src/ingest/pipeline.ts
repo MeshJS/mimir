@@ -472,9 +472,15 @@ export async function runIngestionPipeline(
     }
 
     const upsertPayload: DocumentChunk[] = pendingEmbeddings.map((entry, index) => {
-        const links = entry.githubUrl 
-            ? { githubUrl: entry.githubUrl, docsUrl: undefined, finalUrl: entry.githubUrl }
-            : resolveSourceLinks(entry.filepath, entry.chunkTitle, appConfig, documentMap.get(entry.filepath)?.sourceUrl);
+        const document = documentMap.get(entry.filepath);
+        const sourceUrl = document?.sourceUrl ?? entry.githubUrl;
+        const links = resolveSourceLinks(
+            entry.filepath,
+            entry.chunkTitle,
+            appConfig,
+            sourceUrl
+        );
+
         return {
             content: entry.content,
             contextualText: entry.contextualText,

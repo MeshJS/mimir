@@ -4,7 +4,6 @@ import type { SupabaseVectorStore } from "../supabase/client";
 import type { RetrievedChunk } from "../supabase/types";
 import type { Logger } from "pino";
 import { getLogger } from "../utils/logger";
-import { resolveSourceLinks } from "../utils/sourceLinks";
 
 export interface AskAiOptions {
     question: string;
@@ -41,6 +40,57 @@ export interface AskAiStreamResult {
 interface AskAiContextOptions {
     logger?: Logger;
     config?: AppConfig;
+}
+
+function buildSourcesFromChunks(chunks: RetrievedChunk[]): AskAiSource[] {
+    return chunks.map((chunk) => {
+        const {
+            filepath,
+            chunkTitle,
+            githubUrl,
+            docsUrl,
+            finalUrl,
+            sourceType,
+            entityType,
+            startLine,
+            endLine,
+        } = chunk;
+
+        const isDocFile =
+            sourceType === "mdx" ||
+            /\.(md|mdx)$/i.test(filepath);
+
+        const hasLineInfo =
+            typeof startLine === "number" &&
+            typeof endLine === "number";
+
+        let effectiveGithubUrl = githubUrl;
+        let effectiveDocsUrl = docsUrl;
+        let effectiveFinalUrl = finalUrl ?? docsUrl ?? githubUrl ?? filepath;
+
+        if (!isDocFile && effectiveGithubUrl && hasLineInfo) {
+            // Build a line-anchored GitHub URL for code entities
+            const anchor =
+                startLine === endLine
+                    ? `#L${startLine}`
+                    : `#L${startLine}-L${endLine}`;
+            effectiveFinalUrl = `${effectiveGithubUrl}${anchor}`;
+        } else if (isDocFile && effectiveDocsUrl) {
+            // For docs, prefer the hosted docs URL
+            effectiveFinalUrl = effectiveDocsUrl;
+        }
+
+        return {
+            filepath,
+            chunkTitle,
+            githubUrl: effectiveGithubUrl,
+            docsUrl: effectiveDocsUrl,
+            finalUrl: effectiveFinalUrl,
+            entityType,
+            startLine,
+            endLine,
+        };
+    });
 }
 
 export async function askAi(
@@ -138,26 +188,11 @@ export async function askAi(
                     }
                 }
                 if (chunk.sources && chunk.sources.length > 0) {
+                    // Replace any model-reported sources with canonical ones derived from retrieved chunks.
                     collectedSources.length = 0;
-                    collectedSources.push(...chunk.sources
-                        .filter((src) => src.filepath) // Filter out sources without filepath; during the first stream sources are empty
-                        .map((src) => {
-                            // Recompute URLs using resolveSourceLinks for consistency
-                            const links = resolveSourceLinks(
-                                src.filepath!,
-                                src.chunkTitle,
-                                context?.config,
-                                src.url
-                            );
-                            
-                            return {
-                                filepath: src.filepath!,
-                                chunkTitle: src.chunkTitle,
-                                githubUrl: links.githubUrl,
-                                docsUrl: links.docsUrl,
-                                finalUrl: links.finalUrl || src.url || src.filepath!,
-                            };
-                        }));
+                    collectedSources.push(
+                        ...buildSourcesFromChunks(matches)
+                    );
                 }
             }
         }
@@ -174,25 +209,9 @@ export async function askAi(
         signal: options.signal,
     });
 
-    // Recompute URLs using resolveSourceLinks for consistency
-    const sources: AskAiSource[] = result.sources
-        .filter((src) => src.filepath) // Filter out sources without filepath
-        .map((src) => {
-            const links = resolveSourceLinks(
-                src.filepath!,
-                src.chunkTitle,
-                context?.config,
-                src.url
-            );
-            
-            return {
-                filepath: src.filepath!,
-                chunkTitle: src.chunkTitle,
-                githubUrl: links.githubUrl,
-                docsUrl: links.docsUrl,
-                finalUrl: links.finalUrl || src.url || src.filepath!,
-            };
-        });
+    // Build canonical sources directly from retrieved chunks (DB state),
+    // instead of recomputing links from config at query time.
+    const sources: AskAiSource[] = buildSourcesFromChunks(matches);
 
     activeLogger.info({ answer: result.answer, sourcesCount: sources.length }, "answer from the AI");
 

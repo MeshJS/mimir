@@ -25,26 +25,23 @@ export function resolveSourceLinks(
     const sanitizedTitle = sanitizeSourceTitle(chunkTitle, filepath);
     const slug = slugifyHeading(sanitizedTitle);
 
-    // For TypeScript files, compute GitHub URL (which checks codeUrl/codeDirectory)
-    const isTypeScriptFile = filepath?.endsWith(".ts") || filepath?.endsWith(".tsx");
-    let baseGithubUrl: string | undefined;
-    if (isTypeScriptFile) {
-        // Always compute GitHub URL for TypeScript files (uses codeUrl/codeDirectory if available)
-        baseGithubUrl = computeGithubUrl(filepath, config?.github) || existingSourceUrl;
-    } else {
-        // For MDX files, compute it or use existing sourceUrl
-        baseGithubUrl = computeGithubUrl(filepath, config?.github) || existingSourceUrl;
-    }
-    
-    const baseDocsUrl = computeDocsUrl(filepath, config?.docs);
+    const isDocFile = /\.(md|mdx)$/i.test(filepath);
+
+    // Prefer the ingestion-time sourceUrl (from GitHub download) as the canonical GitHub URL.
+    // Fall back to computing from current GitHub config if it's not available.
+    const baseGithubUrl =
+        existingSourceUrl ||
+        computeGithubUrl(filepath, config?.github);
+
+    const baseDocsUrl = isDocFile ? computeDocsUrl(filepath, config?.docs) : undefined;
 
     const githubUrl = appendSlug(baseGithubUrl, slug);
     const docsUrl = appendSlug(baseDocsUrl, slug);
-    
-    // For TypeScript files, always prefer githubUrl over docsUrl
-    const finalUrl = isTypeScriptFile 
-        ? (githubUrl ?? baseGithubUrl)
-        : (docsUrl ?? githubUrl ?? baseDocsUrl ?? baseGithubUrl);
+
+    // For docs, prefer docsUrl; for code (any language), prefer githubUrl.
+    const finalUrl = isDocFile
+        ? (docsUrl ?? githubUrl ?? baseDocsUrl ?? baseGithubUrl)
+        : (githubUrl ?? baseGithubUrl ?? docsUrl ?? baseDocsUrl);
 
     return { githubUrl, docsUrl, finalUrl, sanitizedTitle, slug };
 }
