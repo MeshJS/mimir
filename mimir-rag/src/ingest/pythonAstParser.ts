@@ -20,6 +20,8 @@ export interface PythonEntity {
     endLine: number;
     /** SHA-256 checksum of the code */
     checksum: string;
+    /** Whether the entity is exported (Python has no explicit exports; this is always false for now) */
+    isExported: boolean;
     /** Docstring if present */
     docstring?: string;
     /** Function/method parameters as string */
@@ -182,6 +184,7 @@ export function parsePythonFile(
             startLine: 1,
             endLine: content.split("\n").length,
             checksum: calculateChecksum(content),
+            isExported: false,
             docstring: astResult.moduleDoc,
         });
     }
@@ -203,6 +206,7 @@ export function parsePythonFile(
             startLine: e.startLine,
             endLine: e.endLine,
             checksum: calculateChecksum(code),
+             isExported: false,
             docstring: e.docstring,
             parameters: e.parameters,
             returnType: e.returnType,

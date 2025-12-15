@@ -114,7 +114,7 @@ async function collectPythonFiles(
             { err: error },
             "Failed to use Git tree API for Python discovery. Falling back to directory walk."
         );
-        return collectPythonFilesLegacy(owner, repo, branch, basePath, headers);
+        return collectPythonFilesLegacy(owner, repo, branch, basePath, headers, parserConfig, includeDirectories);
     }
 }
 
