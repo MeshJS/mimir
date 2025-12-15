@@ -19,10 +19,7 @@ interface PendingEmbeddingChunk {
     checksum: string;
     content: string;
     contextualText: string;
-    /** High-level source classification ('doc' or 'code') */
     sourceType: 'doc' | 'code';
-    /** Optional language identifier (e.g., 'mdx', 'typescript', 'python', 'go') */
-    language?: string;
     entityType?: string;
     startLine?: number;
     endLine?: number;
@@ -369,7 +366,6 @@ export async function runIngestionPipeline(
                                 content: entry.chunk.chunk.chunkContent,
                                 contextualText,
                                 sourceType: 'doc',
-                                language: 'mdx',
                                 githubUrl: links.githubUrl,
                             });
                         }
@@ -440,7 +436,6 @@ export async function runIngestionPipeline(
                                 content: entry.chunk.chunk.content,
                                 contextualText,
                                 sourceType: 'code',
-                                language: document.type,
                                 entityType: entry.chunk.chunk.entityType,
                                 startLine: entry.chunk.chunk.startLine,
                                 endLine: entry.chunk.chunk.endLine,
