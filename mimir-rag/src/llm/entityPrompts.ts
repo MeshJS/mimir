@@ -1,5 +1,4 @@
 import type { EntityContextInput } from "./types";
-import { countTokens } from "../utils/tokenEncoder";
 
 const ENTITY_CONTEXT_SYSTEM_PROMPT = `You are a code documentation expert. Your task is to generate concise, informative context descriptions for code entities (for example, TypeScript or Python).
 
@@ -56,22 +55,17 @@ export function buildEntityContextPrompt(entity: EntityContextInput, filepath?: 
     return parts.join("\n");
 }
 
-export function buildBatchContextPrompt(entities: EntityContextInput[], fileContent: string, filepath?: string, model?: string): string {
+export function buildBatchContextPrompt(entities: EntityContextInput[], fileContent: string, filepath?: string): string {
     const language = getLanguageFromFilepath(filepath);
     const entitySections = entities.map((entity, index) => {
         return `--- Entity ${index + 1} ---\n${buildEntityContextPrompt(entity, filepath)}`;
     }).join("\n\n");
 
-    // Use token-based truncation with a generous limit (16000 tokens)
-    // Modern chat models support 128k+ tokens, so this is conservative but reasonable
-    const MAX_FILE_CONTEXT_TOKENS = 16000;
-    const truncatedContent = truncateFileContentByTokens(fileContent, MAX_FILE_CONTEXT_TOKENS, model);
-
     return `Generate context descriptions for the following ${entities.length} code entities from the same file.
 
-File Context (truncated if large):
+File Context:
 \`\`\`${language}
-${truncatedContent}
+${fileContent}
 \`\`\`
 
 ${entitySections}
@@ -79,77 +73,6 @@ ${entitySections}
 For each entity, provide a concise context description (100-200 tokens) that explains its purpose, key characteristics, and relationships. Format your response as a numbered list matching the entity numbers above.`;
 }
 
-/**
- * Truncate file content by tokens instead of characters
- * This allows us to use much more of the available context window
- * Uses a more efficient approach: estimate character-to-token ratio and refine
- */
-function truncateFileContentByTokens(content: string, maxTokens: number, model?: string): string {
-    const contentTokens = countTokens(content, model);
-    
-    if (contentTokens <= maxTokens) {
-        return content;
-    }
-
-    // Estimate character-to-token ratio from a sample
-    const sampleSize = Math.min(1000, content.length);
-    const sample = content.slice(0, sampleSize);
-    const sampleTokens = countTokens(sample, model);
-    const ratio = sampleTokens > 0 ? sampleSize / sampleTokens : 4; // Default ~4 chars per token
-    
-    // Estimate target length, then refine
-    let estimatedLength = Math.floor(maxTokens * ratio * 0.9); // Use 90% to be safe
-    estimatedLength = Math.min(estimatedLength, content.length);
-    
-    let truncated = content.slice(0, estimatedLength);
-    let tokens = countTokens(truncated, model);
-    
-    // Refine: if too short, expand; if too long, shrink
-    if (tokens < maxTokens * 0.95) {
-        // Expand if we have room
-        const remaining = content.slice(estimatedLength);
-        const remainingTokens = countTokens(remaining, model);
-        const canAdd = maxTokens - tokens;
-        
-        if (canAdd > 0 && remainingTokens > 0) {
-            // Estimate how much more we can add
-            const addRatio = remaining.length / remainingTokens;
-            const addLength = Math.floor(canAdd * addRatio * 0.9);
-            const newLength = Math.min(estimatedLength + addLength, content.length);
-            truncated = content.slice(0, newLength);
-            tokens = countTokens(truncated, model);
-        }
-    }
-    
-    // If still too long, binary search to find exact point
-    if (tokens > maxTokens) {
-        let left = 0;
-        let right = truncated.length;
-        
-        while (left < right) {
-            const mid = Math.floor((left + right) / 2);
-            const test = content.slice(0, mid);
-            const testTokens = countTokens(test, model);
-            
-            if (testTokens <= maxTokens) {
-                left = mid + 1;
-                truncated = test;
-                tokens = testTokens;
-            } else {
-                right = mid;
-            }
-        }
-    }
-
-    // Try to cut at a reasonable point (line boundary)
-    const lastNewline = truncated.lastIndexOf("\n");
-    
-    if (lastNewline > truncated.length * 0.8) {
-        return truncated.slice(0, lastNewline) + "\n// ... (file truncated)";
-    }
-
-    return truncated + "\n// ... (file truncated)";
-}
 
 export function getEntityContextSystemPrompt(): string {
     return ENTITY_CONTEXT_SYSTEM_PROMPT;
