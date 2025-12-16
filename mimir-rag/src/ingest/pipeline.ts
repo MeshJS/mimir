@@ -204,8 +204,24 @@ export async function runIngestionPipeline(
     // DB rows with that checksum. This set tracks which DB row IDs we've already decided
     // to reuse, so we don't accidentally assign the same DB row to two different targets.
     const alreadyAssignedDbIds = new Set<number>();
+    
+    // Track which target locations (filepath + chunkId + sourceType) have already been assigned
+    // to prevent multiple chunks from being moved to the same location
+    const assignedTargetLocations = new Set<string>();
 
     for (const [checksum, target] of targetState.entries()) {
+        const targetLocationKey = `${target.filepath}:${target.chunkId}:${target.sourceType}`;
+        
+        // Check if this target location is already assigned to another chunk
+        // This prevents duplicate key violations when multiple chunks with the same checksum
+        // try to move to the same target location (e.g., during sourceType migration)
+        if (assignedTargetLocations.has(targetLocationKey)) {
+            // This target location is already taken by another chunk.
+            // Skip this target - the existing chunk at this location will be updated via upsert
+            // if needed, or we'll rely on the chunk that was already moved there.
+            continue;
+        }
+        
         const dbChunksWithSameChecksum = existingByChecksum.get(checksum);
 
         if (dbChunksWithSameChecksum && dbChunksWithSameChecksum.length > 0) {
@@ -224,6 +240,7 @@ export async function runIngestionPipeline(
                 // This DB row is already where we want it - no changes needed
                 classifications.push({ type: "unchanged", existingId: alreadyInPlace.id });
                 alreadyAssignedDbIds.add(alreadyInPlace.id);
+                assignedTargetLocations.add(targetLocationKey);
             } else {
                 // No DB row at the target location. Find any unassigned DB row we can move there.
                 const reusableDbChunk = dbChunksWithSameChecksum.find(
@@ -240,6 +257,7 @@ export async function runIngestionPipeline(
                         newSourceType: target.sourceType,
                     });
                     alreadyAssignedDbIds.add(reusableDbChunk.id);
+                    assignedTargetLocations.add(targetLocationKey);
                 } else {
                     // All DB rows with this checksum are already assigned to other targets.
                     // We need to create a new row (and generate a new embedding).
@@ -251,6 +269,7 @@ export async function runIngestionPipeline(
                         sourceType: target.sourceType,
                         githubUrl: target.githubUrl,
                     });
+                    assignedTargetLocations.add(targetLocationKey);
                 }
             }
         } else {
@@ -263,6 +282,7 @@ export async function runIngestionPipeline(
                 sourceType: target.sourceType,
                 githubUrl: target.githubUrl,
             });
+            assignedTargetLocations.add(targetLocationKey);
         }
     }
 
