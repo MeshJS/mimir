@@ -101,6 +101,12 @@ export async function parsePythonFile(
 
     // Add a module-level entity for overall context
     if (content.trim().length > 0) {
+        // Calculate endLine correctly: count newlines and handle trailing newline
+        // If content ends with newline, the trailing newline doesn't create a new content line
+        // Example: "line1\nline2\n" has 2 newlines but only 2 lines of content
+        const newlineCount = (content.match(/\n/g) || []).length;
+        const endLine = content.endsWith("\n") ? newlineCount : newlineCount + 1;
+        
         entities.push({
             entityType: "module",
             name: moduleName,
@@ -108,7 +114,7 @@ export async function parsePythonFile(
             code: content,
             parentContext: undefined,
             startLine: 1,
-            endLine: content.split("\n").length,
+            endLine: endLine,
             checksum: calculateChecksum(content),
             isExported: false,
             docstring: astResult.moduleDoc,
