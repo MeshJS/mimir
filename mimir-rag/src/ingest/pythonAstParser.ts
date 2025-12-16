@@ -1,5 +1,6 @@
 import { calculateChecksum } from "../utils/calculateChecksum";
-import { loadPyodide, type PyodideInterface } from "@pyodide/pyodide";
+import { Parser, Language, Node } from "web-tree-sitter";
+import path from "node:path";
 
 export type PythonEntityType = "function" | "class" | "method" | "variable" | "module";
 
@@ -56,6 +57,32 @@ interface PythonAstResult {
     imports: string[];
     moduleDoc?: string;
     entities: PythonAstEntity[];
+}
+
+// Lazy-loaded parser instance
+let parserInstance: Parser | null = null;
+let parserLoadPromise: Promise<Parser> | null = null;
+
+async function getParser(): Promise<Parser> {
+    if (parserInstance) {
+        return parserInstance;
+    }
+    
+    if (parserLoadPromise) {
+        return parserLoadPromise;
+    }
+
+    parserLoadPromise = (async () => {
+        // Load Python language from WASM file
+        const pythonWasmPath = path.join(__dirname, "../../node_modules/tree-sitter-python/tree-sitter-python.wasm");
+        const PythonLang = await Language.load(pythonWasmPath);
+        const parser = new Parser();
+        parser.setLanguage(PythonLang);
+        parserInstance = parser;
+        return parser;
+    })();
+
+    return parserLoadPromise;
 }
 
 export async function parsePythonFile(
@@ -117,142 +144,182 @@ export async function parsePythonFile(
     };
 }
 
-// Lazy-loaded Pyodide instance
-let pyodideInstance: PyodideInterface | null = null;
-let pyodideLoadPromise: Promise<PyodideInterface> | null = null;
+function extractDocstring(node: Node, content: string): string | undefined {
+    // Look for docstring as first statement in function/class body
+    const body = node.childForFieldName("body");
+    if (!body) return undefined;
 
-async function getPyodide(): Promise<PyodideInterface> {
-    if (pyodideInstance) {
-        return pyodideInstance;
+    const firstStmt = body.namedChildren[0];
+    if (!firstStmt) return undefined;
+
+    // Check if first statement is an expression statement with a string
+    if (firstStmt.type === "expression_statement") {
+        const expr = firstStmt.firstChild;
+        if (expr && (expr.type === "string" || expr.type === "concatenated_string")) {
+            const start = expr.startIndex;
+            const end = expr.endIndex;
+            let docstring = content.substring(start, end);
+            // Remove quotes (handles both single and triple quotes)
+            docstring = docstring.replace(/^["']{1,3}|["']{1,3}$/g, "");
+            return docstring.trim() || undefined;
+        }
     }
-    
-    if (pyodideLoadPromise) {
-        return pyodideLoadPromise;
+    return undefined;
+}
+
+function extractParameters(node: Node, content: string): string {
+    const parameters = node.childForFieldName("parameters");
+    if (!parameters) return "()";
+
+    const start = parameters.startIndex;
+    const end = parameters.endIndex;
+    return content.substring(start, end);
+}
+
+function extractReturnType(node: Node, content: string): string | undefined {
+    const returnType = node.childForFieldName("return_type");
+    if (!returnType) return undefined;
+
+    const start = returnType.startIndex;
+    const end = returnType.endIndex;
+    return content.substring(start, end).trim() || undefined;
+}
+
+function extractImportStatement(node: Node, content: string): string {
+    const start = node.startIndex;
+    const end = node.endIndex;
+    return content.substring(start, end).trim();
+}
+
+function extractName(node: Node): string | undefined {
+    const nameNode = node.childForFieldName("name");
+    if (nameNode) {
+        return nameNode.text;
+    }
+    // Fallback: look for identifier in children
+    for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child && child.type === "identifier") {
+            return child.text;
+        }
+    }
+    return undefined;
+}
+
+function traverseTree(
+    node: Node,
+    content: string,
+    result: PythonAstResult,
+    parentClass?: string
+): void {
+    const nodeType = node.type;
+
+    // Handle imports
+    if (nodeType === "import_statement" || nodeType === "import_from_statement") {
+        result.imports.push(extractImportStatement(node, content));
+        return;
     }
 
-    pyodideLoadPromise = loadPyodide({
-        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/",
-    }).then((pyodide) => {
-        // Set up the Python AST parsing function
-        pyodide.runPython(`
-import ast
-import json
+    // Handle function definitions
+    if (nodeType === "function_definition" || nodeType === "decorated_definition") {
+        const funcNode = nodeType === "decorated_definition" 
+            ? node.childForFieldName("definition") 
+            : node;
+        
+        if (!funcNode || funcNode.type !== "function_definition") return;
 
-def get_parameters_str(node):
-    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        return ""
-    params = []
-    args = node.args
+        const name = extractName(funcNode);
+        if (!name) return;
 
-    def fmt_arg(a):
-        name = a.arg
-        if a.annotation is not None:
-            name += ": " + ast.unparse(a.annotation)
-        return name
+        const startRow = node.startPosition.row;
+        const endRow = node.endPosition.row;
+        const docstring = extractDocstring(funcNode, content);
+        const parameters = extractParameters(funcNode, content);
+        const returnType = extractReturnType(funcNode, content);
 
-    for a in args.posonlyargs:
-        params.append(fmt_arg(a))
-    if args.posonlyargs:
-        params.append("/")
-    for a in args.args:
-        params.append(fmt_arg(a))
-    if args.vararg:
-        params.append("*" + args.vararg.arg)
-    elif args.kwonlyargs:
-        params.append("*")
-    for a in args.kwonlyargs:
-        params.append(fmt_arg(a))
-    if args.kwarg:
-        params.append("**" + args.kwarg.arg)
-
-    return "(" + ", ".join(params) + ")"
-
-def parse_python_ast(filepath, source):
-    try:
-        tree = ast.parse(source, filename=filepath)
-    except SyntaxError:
-        return json.dumps({"imports": [], "moduleDoc": None, "entities": []})
-
-    result = {
-        "imports": [],
-        "moduleDoc": ast.get_docstring(tree),
-        "entities": [],
+        result.entities.push({
+            kind: parentClass ? "method" : "function",
+            name,
+            parent: parentClass,
+            startLine: startRow + 1, // tree-sitter uses 0-based, we use 1-based
+            endLine: endRow + 1,
+            docstring,
+            parameters,
+            returnType,
+        });
+        return;
     }
 
-    # Collect imports and top-level entities
-    for node in tree.body:
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            seg = ast.get_source_segment(source, node)
-            if seg is None:
-                seg = ast.unparse(node)
-            result["imports"].append(seg)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            entity = {
-                "kind": "function",
-                "name": node.name,
-                "startLine": node.lineno,
-                "endLine": node.end_lineno or node.lineno,
-                "docstring": ast.get_docstring(node),
-                "parameters": get_parameters_str(node),
-                "returnType": ast.unparse(node.returns) if node.returns is not None else None,
+    // Handle class definitions
+    if (nodeType === "class_definition") {
+        const name = extractName(node);
+        if (!name) return;
+
+        const startRow = node.startPosition.row;
+        const endRow = node.endPosition.row;
+        const docstring = extractDocstring(node, content);
+
+        result.entities.push({
+            kind: "class",
+            name,
+            startLine: startRow + 1,
+            endLine: endRow + 1,
+            docstring,
+        });
+
+        // Traverse class body to find methods
+        const body = node.childForFieldName("body");
+        if (body) {
+            for (let i = 0; i < body.childCount; i++) {
+                const child = body.child(i);
+                if (child) {
+                    traverseTree(child, content, result, name);
+                }
             }
-            result["entities"].append(entity)
-        elif isinstance(node, ast.ClassDef):
-            class_entity = {
-                "kind": "class",
-                "name": node.name,
-                "startLine": node.lineno,
-                "endLine": node.end_lineno or node.lineno,
-                "docstring": ast.get_docstring(node),
-            }
-            result["entities"].append(class_entity)
+        }
+        return;
+    }
 
-            # Methods inside the class
-            for item in node.body:
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    method_entity = {
-                        "kind": "method",
-                        "name": item.name,
-                        "parent": node.name,
-                        "startLine": item.lineno,
-                        "endLine": item.end_lineno or item.lineno,
-                        "docstring": ast.get_docstring(item),
-                        "parameters": get_parameters_str(item),
-                        "returnType": ast.unparse(item.returns) if item.returns is not None else None,
-                    }
-                    result["entities"].append(method_entity)
+    // Handle module-level docstring (first statement if it's a string)
+    if (nodeType === "expression_statement" && !result.moduleDoc) {
+        const expr = node.firstChild;
+        if (expr && (expr.type === "string" || expr.type === "concatenated_string")) {
+            const start = expr.startIndex;
+            const end = expr.endIndex;
+            let docstring = content.substring(start, end);
+            docstring = docstring.replace(/^["']{1,3}|["']{1,3}$/g, "");
+            result.moduleDoc = docstring.trim() || undefined;
+        }
+    }
 
-    return json.dumps(result)
-`);
-        pyodideInstance = pyodide;
-        return pyodide;
-    });
-
-    return pyodideLoadPromise;
+    // Recursively traverse children
+    for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child) {
+            traverseTree(child, content, result, parentClass);
+        }
+    }
 }
 
 async function runPythonAstAnalysis(filepath: string, content: string): Promise<PythonAstResult> {
     try {
-        const pyodide = await getPyodide();
+        const parser = await getParser();
+        const tree = parser.parse(content);
         
-        // Set the filepath and source in Python globals
-        pyodide.globals.set("_parse_filepath", filepath);
-        pyodide.globals.set("_parse_source", content);
-        
-        // Call the parse function
-        const resultJson = pyodide.runPython(`
-parse_python_ast(_parse_filepath, _parse_source)
-`) as string;
-        
-        if (!resultJson || !resultJson.trim()) {
+        if (!tree) {
             return { imports: [], moduleDoc: undefined, entities: [] };
         }
+        
+        const result: PythonAstResult = {
+            imports: [],
+            moduleDoc: undefined,
+            entities: [],
+        };
 
-        const parsed = JSON.parse(resultJson) as PythonAstResult;
-        // Normalize to expected shapes
-        parsed.imports = parsed.imports ?? [];
-        parsed.entities = parsed.entities ?? [];
-        return parsed;
+        // Traverse the tree starting from the root
+        traverseTree(tree.rootNode, content, result);
+
+        return result;
     } catch (error) {
         // Fallback: return empty result if parsing fails
         return { imports: [], moduleDoc: undefined, entities: [] };
