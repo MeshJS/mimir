@@ -73,6 +73,9 @@ async function getParser(): Promise<Parser> {
     }
 
     parserLoadPromise = (async () => {
+        // Initialize WebAssembly module before loading languages
+        await Parser.init();
+        
         // Load Python language from WASM file
         const pythonWasmPath = path.join(__dirname, "../../node_modules/tree-sitter-python/tree-sitter-python.wasm");
         const PythonLang = await Language.load(pythonWasmPath);
@@ -242,7 +245,7 @@ function traverseTree(
             name,
             parent: parentClass,
             startLine: startRow + 1, // tree-sitter uses 0-based, we use 1-based
-            endLine: endRow + 1,
+            endLine: endRow, // endPosition.row is exclusive (points to row after), so no +1 needed
             docstring,
             parameters,
             returnType,
@@ -262,8 +265,8 @@ function traverseTree(
         result.entities.push({
             kind: "class",
             name,
-            startLine: startRow + 1,
-            endLine: endRow + 1,
+            startLine: startRow + 1, // tree-sitter uses 0-based, we use 1-based
+            endLine: endRow, // endPosition.row is exclusive (points to row after), so no +1 needed
             docstring,
         });
 
