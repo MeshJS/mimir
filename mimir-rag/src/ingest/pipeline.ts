@@ -144,7 +144,7 @@ export async function runIngestionPipeline(
                 if (document.type === 'typescript') {
                     parsedFile = parseTypescriptFile(filepath, document.content, appConfig.parser);
                 } else {
-                    parsedFile = parsePythonFile(filepath, document.content);
+                    parsedFile = await parsePythonFile(filepath, document.content);
                 }
             } catch (error) {
                 fileLogger.error({ err: error }, `Failed to parse ${document.type} file. Skipping.`);

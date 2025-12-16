@@ -1,11 +1,11 @@
 import { parsePythonFile, ParsedPythonFile, PythonEntity } from "../pythonAstParser";
 import type { CodeParsedFile, CodeEntity } from "./types";
 
-export function parsePythonCodeFile(
+export async function parsePythonCodeFile(
     filepath: string,
     content: string
-): CodeParsedFile {
-    const parsed: ParsedPythonFile = parsePythonFile(filepath, content);
+): Promise<CodeParsedFile> {
+    const parsed: ParsedPythonFile = await parsePythonFile(filepath, content);
 
     const entities: CodeEntity[] = parsed.entities.map((e: PythonEntity) => ({
         entityType: e.entityType,
