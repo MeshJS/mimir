@@ -187,7 +187,7 @@ export abstract class BaseChatProvider implements ChatProvider {
             batches.map((batch, batchIndex) =>
                 limit(async () => {
                     const systemPrompt = getEntityContextSystemPrompt();
-                    const userPrompt = buildBatchContextPrompt(batch, fileContent, filepath);
+                    const userPrompt = buildBatchContextPrompt(batch, fileContent, filepath, this.config.model);
 
                     const tokens = this.estimateEntityContextTokens(systemPrompt, userPrompt);
                     const response = await this.scheduleWithRateLimits(
