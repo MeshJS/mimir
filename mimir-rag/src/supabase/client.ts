@@ -302,6 +302,26 @@ export class SupabaseVectorStore {
             }
             
             const move = targetMoves[0]; // Only move the first one
+            
+            // Check if target location is already occupied by a different chunk
+            const { data: existingChunk } = await this.client
+                .from(this.config.table)
+                .select("id")
+                .eq("filepath", move.filepath)
+                .eq("chunk_id", move.chunkId)
+                .maybeSingle();
+            
+            if (existingChunk && existingChunk.id !== move.id) {
+                // Target location is already occupied by a different chunk
+                // This shouldn't happen if pipeline logic is correct, but handle defensively
+                this.logger.warn(
+                    `Target location ${uniqueKey} already occupied by chunk ${existingChunk.id}. Skipping move for chunk ${move.id}.`
+                );
+                // Mark this chunk as stranded since it won't be moved
+                strandedChunkIds.push(move.id);
+                continue;
+            }
+            
             const updateData: any = { 
                 filepath: move.filepath,
                 chunk_id: move.chunkId 
