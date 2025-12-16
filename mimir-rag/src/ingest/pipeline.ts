@@ -241,9 +241,11 @@ export async function runIngestionPipeline(
             // We found existing DB rows with matching content. Try to reuse one.
             
             // First, check if any DB row is already at the exact target location
+            // Exclude chunks in temporary __moving__ locations - these are stranded and need to be moved
             // Normalize source types for comparison to handle legacy values
             const alreadyInPlace = dbChunksWithSameChecksum.find(
                 (dbChunk) => 
+                    !dbChunk.filepath.startsWith("__moving__") && // Exclude temporary locations
                     dbChunk.filepath === target.filepath && 
                     dbChunk.chunkId === target.chunkId &&
                     normalizeSourceType(dbChunk.sourceType) === normalizeSourceType(target.sourceType) &&
@@ -275,7 +277,12 @@ export async function runIngestionPipeline(
                 }
                 } else {
                     // No DB row at the target location. Find any unassigned DB row we can move there.
+                    // Prefer chunks in temporary __moving__ locations (stranded chunks) to clean them up
                     const reusableDbChunk = dbChunksWithSameChecksum.find(
+                        (dbChunk) => 
+                            !alreadyAssignedDbIds.has(dbChunk.id) &&
+                            dbChunk.filepath.startsWith("__moving__") // Prefer stranded chunks
+                    ) || dbChunksWithSameChecksum.find(
                         (dbChunk) => !alreadyAssignedDbIds.has(dbChunk.id)
                     );
 
@@ -339,6 +346,11 @@ export async function runIngestionPipeline(
 
     // Find orphaned chunks (checksums not in target state)
     const activeChecksums = new Set(targetState.keys());
+    
+    // Also find and mark stranded chunks in __moving__ locations for cleanup
+    // These are chunks that were left in temporary locations from previous failed moves
+    const strandedChunkIds = await store.findStrandedChunkIds(activeChecksums);
+    
     const orphanedIds = await store.findOrphanedChunkIds(activeChecksums);
 
     // Move chunks to new locations (two-phase to avoid conflicts)
@@ -359,11 +371,19 @@ export async function runIngestionPipeline(
         stats.movedChunks = movedChunks.length;
     }
 
-    // Delete orphaned chunks
-    if (orphanedIds.length > 0) {
-        ingestionLogger.info(`Deleting ${orphanedIds.length} orphaned chunk${orphanedIds.length === 1 ? "" : "s"}.`);
-        await store.deleteChunksByIds(orphanedIds);
-        stats.deletedChunks = orphanedIds.length;
+    // Delete orphaned chunks and stranded chunks
+    const chunksToDelete = [...new Set([...orphanedIds, ...strandedChunkIds])];
+    if (chunksToDelete.length > 0) {
+        const orphanedCount = orphanedIds.length;
+        const strandedCount = strandedChunkIds.length;
+        if (strandedCount > 0) {
+            ingestionLogger.info(`Deleting ${strandedCount} stranded chunk${strandedCount === 1 ? "" : "s"} in temporary locations.`);
+        }
+        if (orphanedCount > 0) {
+            ingestionLogger.info(`Deleting ${orphanedCount} orphaned chunk${orphanedCount === 1 ? "" : "s"}.`);
+        }
+        await store.deleteChunksByIds(chunksToDelete);
+        stats.deletedChunks = chunksToDelete.length;
     }
 
     // Embed and insert new chunks
