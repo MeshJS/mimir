@@ -209,6 +209,19 @@ export async function runIngestionPipeline(
     // to prevent multiple chunks from being moved to the same location
     const assignedTargetLocations = new Set<string>();
 
+    /**
+     * Normalize legacy source types to new normalized values for comparison
+     * Legacy: 'typescript', 'python', 'mdx' -> New: 'code', 'doc'
+     */
+    function normalizeSourceType(sourceType?: string): 'doc' | 'code' | undefined {
+        if (!sourceType) return undefined;
+        if (sourceType === 'code' || sourceType === 'doc') return sourceType;
+        // Normalize legacy values
+        if (sourceType === 'typescript' || sourceType === 'python') return 'code';
+        if (sourceType === 'mdx') return 'doc';
+        return undefined;
+    }
+
     for (const [checksum, target] of targetState.entries()) {
         const targetLocationKey = `${target.filepath}:${target.chunkId}:${target.sourceType}`;
         
@@ -228,11 +241,12 @@ export async function runIngestionPipeline(
             // We found existing DB rows with matching content. Try to reuse one.
             
             // First, check if any DB row is already at the exact target location
+            // Normalize source types for comparison to handle legacy values
             const alreadyInPlace = dbChunksWithSameChecksum.find(
                 (dbChunk) => 
                     dbChunk.filepath === target.filepath && 
                     dbChunk.chunkId === target.chunkId &&
-                    dbChunk.sourceType === target.sourceType &&
+                    normalizeSourceType(dbChunk.sourceType) === normalizeSourceType(target.sourceType) &&
                     !alreadyAssignedDbIds.has(dbChunk.id)
             );
 

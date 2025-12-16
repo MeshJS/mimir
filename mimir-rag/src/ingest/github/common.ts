@@ -4,7 +4,71 @@ import {
     normalizeRepoPath,
     encodeRepoPath,
 } from "../../github/utils";
-import { shouldExcludeFile, shouldIncludeFile } from "./typescript";
+import path from "node:path";
+
+/**
+ * Check if a file path matches any of the exclude patterns
+ * (used for all code languages, not just TypeScript)
+ */
+export function shouldExcludeFile(filepath: string, excludePatterns: string[]): boolean {
+    const filename = path.basename(filepath);
+    
+    for (const pattern of excludePatterns) {
+        // Simple glob matching for common patterns
+        if (pattern.startsWith("*")) {
+            const suffix = pattern.slice(1);
+            if (filename.endsWith(suffix) || filepath.endsWith(suffix)) {
+                return true;
+            }
+        } else if (pattern.endsWith("*")) {
+            const prefix = pattern.slice(0, -1);
+            if (filename.startsWith(prefix) || filepath.includes(prefix)) {
+                return true;
+            }
+        } else if (filename === pattern || filepath.includes(pattern)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Check if a file path is within any of the included directories
+ * (used for all code languages, not just TypeScript)
+ */
+export function shouldIncludeFile(filepath: string, basePath: string, includeDirectories: string[]): boolean {
+    // Normalize paths for comparison
+    const normalizedBase = normalizeRepoPath(basePath);
+    const normalizedPath = normalizeRepoPath(filepath);
+    
+    for (const includeDir of includeDirectories) {
+        const normalizedInclude = normalizeRepoPath(includeDir);
+        
+        // Build the full path: basePath + includeDir
+        let fullIncludePath: string;
+        if (normalizedBase) {
+            fullIncludePath = normalizedBase.endsWith("/")
+                ? `${normalizedBase}${normalizedInclude}`
+                : `${normalizedBase}/${normalizedInclude}`;
+        } else {
+            fullIncludePath = normalizedInclude;
+        }
+        
+        // Check if file path starts with the include directory path
+        // Also handle exact match or directory prefix
+        if (
+            normalizedPath === fullIncludePath ||
+            normalizedPath.startsWith(fullIncludePath + "/") ||
+            normalizedPath.startsWith(normalizedInclude + "/") ||
+            normalizedPath === normalizedInclude
+        ) {
+            return true;
+        }
+    }
+    
+    return false;
+}
 
 export interface GithubTreeEntry {
     path: string;
