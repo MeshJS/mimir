@@ -26,7 +26,6 @@
     "@ai-sdk/google": "^2.0.44",
     "@ai-sdk/mistral": "^2.0.25",
     "@ai-sdk/openai": "^2.0.74",
-    "@pyodide/pyodide": "^0.17.1",
     "@supabase/supabase-js": "^2.81.0",
     "ai": "^5.0.104",
     "bottleneck": "^2.19.5",
@@ -37,6 +36,8 @@
     "p-retry": "^7.1.0",
     "pino": "^10.1.0",
     "tiktoken": "^1.0.22",
-    "typescript": "^5.9.3"
+    "tree-sitter-python": "^0.25.0",
+    "typescript": "^5.9.3",
+    "web-tree-sitter": "^0.26.3"
   }
 }
