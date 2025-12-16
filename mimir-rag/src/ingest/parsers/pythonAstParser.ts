@@ -251,7 +251,7 @@ function traverseTree(
             name,
             parent: parentClass,
             startLine: startRow + 1, // tree-sitter uses 0-based, we use 1-based
-            endLine: endRow + 1, // endPosition.row is 0-based (last line), convert to 1-based inclusive to match module entity convention
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
             docstring,
             parameters,
             returnType,
@@ -272,7 +272,7 @@ function traverseTree(
             kind: "class",
             name,
             startLine: startRow + 1, // tree-sitter uses 0-based, we use 1-based
-            endLine: endRow + 1, // endPosition.row is 0-based (last line), convert to 1-based inclusive to match module entity convention
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
             docstring,
         });
 

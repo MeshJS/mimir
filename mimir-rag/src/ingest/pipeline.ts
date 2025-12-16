@@ -284,7 +284,7 @@ export async function runIngestionPipeline(
                         // (defensive check, should not happen due to earlier check)
                         if (assignedTargetLocations.has(targetLocationKey)) {
                             // This should not happen, but if it does, skip this target
-                            logger?.warn(
+                            ingestionLogger.warn(
                                 `Target location ${targetLocationKey} already assigned, skipping move for chunk ${reusableDbChunk.id}`
                             );
                             continue;
@@ -306,7 +306,7 @@ export async function runIngestionPipeline(
                         // But first, check if target location is already taken
                         if (assignedTargetLocations.has(targetLocationKey)) {
                             // Target location already taken, skip creating new chunk
-                            logger?.warn(
+                            ingestionLogger.warn(
                                 `Target location ${targetLocationKey} already assigned, skipping new chunk creation`
                             );
                             continue;
