@@ -273,37 +273,56 @@ export async function runIngestionPipeline(
                     alreadyAssignedDbIds.add(alreadyInPlace.id);
                     assignedTargetLocations.add(targetLocationKey);
                 }
-            } else {
-                // No DB row at the target location. Find any unassigned DB row we can move there.
-                const reusableDbChunk = dbChunksWithSameChecksum.find(
-                    (dbChunk) => !alreadyAssignedDbIds.has(dbChunk.id)
-                );
-
-                if (reusableDbChunk) {
-                    // Move this existing DB row to the new location
-                    classifications.push({
-                        type: "moved",
-                        existingId: reusableDbChunk.id,
-                        newFilepath: target.filepath,
-                        newChunkId: target.chunkId,
-                        newSourceType: target.sourceType,
-                    });
-                    alreadyAssignedDbIds.add(reusableDbChunk.id);
-                    assignedTargetLocations.add(targetLocationKey);
                 } else {
-                    // All DB rows with this checksum are already assigned to other targets.
-                    // We need to create a new row (and generate a new embedding).
-                    classifications.push({
-                        type: "new",
-                        chunk: target.chunk,
-                        filepath: target.filepath,
-                        chunkId: target.chunkId,
-                        sourceType: target.sourceType,
-                        githubUrl: target.githubUrl,
-                    });
-                    assignedTargetLocations.add(targetLocationKey);
+                    // No DB row at the target location. Find any unassigned DB row we can move there.
+                    const reusableDbChunk = dbChunksWithSameChecksum.find(
+                        (dbChunk) => !alreadyAssignedDbIds.has(dbChunk.id)
+                    );
+
+                    if (reusableDbChunk) {
+                        // Double-check that this target location isn't already assigned
+                        // (defensive check, should not happen due to earlier check)
+                        if (assignedTargetLocations.has(targetLocationKey)) {
+                            // This should not happen, but if it does, skip this target
+                            logger?.warn(
+                                `Target location ${targetLocationKey} already assigned, skipping move for chunk ${reusableDbChunk.id}`
+                            );
+                            continue;
+                        }
+                        
+                        // Move this existing DB row to the new location
+                        classifications.push({
+                            type: "moved",
+                            existingId: reusableDbChunk.id,
+                            newFilepath: target.filepath,
+                            newChunkId: target.chunkId,
+                            newSourceType: target.sourceType,
+                        });
+                        alreadyAssignedDbIds.add(reusableDbChunk.id);
+                        assignedTargetLocations.add(targetLocationKey);
+                    } else {
+                        // All DB rows with this checksum are already assigned to other targets.
+                        // We need to create a new row (and generate a new embedding).
+                        // But first, check if target location is already taken
+                        if (assignedTargetLocations.has(targetLocationKey)) {
+                            // Target location already taken, skip creating new chunk
+                            logger?.warn(
+                                `Target location ${targetLocationKey} already assigned, skipping new chunk creation`
+                            );
+                            continue;
+                        }
+                        
+                        classifications.push({
+                            type: "new",
+                            chunk: target.chunk,
+                            filepath: target.filepath,
+                            chunkId: target.chunkId,
+                            sourceType: target.sourceType,
+                            githubUrl: target.githubUrl,
+                        });
+                        assignedTargetLocations.add(targetLocationKey);
+                    }
                 }
-            }
         } else {
             // No existing DB row with this checksum - create new
             classifications.push({

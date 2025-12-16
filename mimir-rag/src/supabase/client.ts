@@ -270,33 +270,44 @@ export class SupabaseVectorStore {
             );
         }
 
-        // Phase 2: Batch update to final filepaths
-        // Group by (filepath, chunkId, sourceType) to batch updates with same values
+        // Phase 2: Move all chunks to their final filepaths
+        // IMPORTANT: Only one chunk can occupy each (filepath, chunkId) combination due to unique constraint.
+        // If multiple chunks target the same location, only move the first one.
+        // The pipeline should prevent this, but we handle it defensively here.
         const movesByTarget = new Map<string, typeof moves>();
         for (const move of moves) {
-            const key = `${move.filepath}:${move.chunkId}:${move.sourceType ?? 'null'}`;
-            if (!movesByTarget.has(key)) {
-                movesByTarget.set(key, []);
+            // Key includes sourceType to allow same (filepath, chunkId) with different sourceType
+            // But the unique constraint is only on (filepath, chunkId), so we need to deduplicate
+            const uniqueKey = `${move.filepath}:${move.chunkId}`;
+            if (!movesByTarget.has(uniqueKey)) {
+                movesByTarget.set(uniqueKey, []);
             }
-            movesByTarget.get(key)!.push(move);
+            movesByTarget.get(uniqueKey)!.push(move);
         }
 
-        for (const [targetKey, targetMoves] of movesByTarget.entries()) {
-            const ids = targetMoves.map(m => m.id);
-            const firstMove = targetMoves[0];
-            const updateData: any = { filepath: firstMove.filepath };
-            if (firstMove.sourceType) {
-                updateData.source_type = firstMove.sourceType;
+        for (const [uniqueKey, targetMoves] of movesByTarget.entries()) {
+            // If multiple chunks target the same (filepath, chunkId), only move the first one
+            // This should not happen if the pipeline logic is correct, but we handle it defensively
+            if (targetMoves.length > 1) {
+                this.logger.warn(
+                    `Multiple chunks (${targetMoves.length}) targeting same location ${uniqueKey}. Only moving first chunk.`
+                );
+            }
+            
+            const move = targetMoves[0]; // Only move the first one
+            const updateData: any = { filepath: move.filepath };
+            if (move.sourceType) {
+                updateData.source_type = move.sourceType;
             }
 
             const { error } = await this.client
                 .from(this.config.table)
                 .update(updateData)
-                .in("id", ids);
+                .eq("id", move.id);
 
             if (error) {
-                this.logger.error(`Failed to move ${ids.length} chunk${ids.length === 1 ? "" : "s"} to final filepath: ${error.message}`);
-                throw new Error(`Failed to move chunks to final filepath: ${error.message}`);
+                this.logger.error(`Failed to move chunk ${move.id} to final filepath: ${error.message}`);
+                throw new Error(`Failed to move chunk to final filepath: ${error.message}`);
             }
         }
 
