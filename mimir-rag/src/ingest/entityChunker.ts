@@ -1,7 +1,12 @@
 import { Buffer } from "node:buffer";
 import type { TypeScriptEntity, EntityType, ParsedFile } from "./astParser";
+import type { ParsedPythonFile, PythonEntity } from "./pythonAstParser";
 import { calculateChecksum } from "../utils/calculateChecksum";
 import { countTokens, getEncoder } from "../utils/tokenEncoder";
+
+// Unified entity type that supports both TypeScript and Python entities
+type UnifiedEntity = TypeScriptEntity | PythonEntity;
+type UnifiedParsedFile = ParsedFile | ParsedPythonFile;
 
 export interface EntityChunk {
     /** Qualified name of the entity (e.g., "ClassName.methodName") */
@@ -48,8 +53,9 @@ export interface ChunkedFile {
 
 /**
  * Process a parsed file and create chunks with token limits enforced
+ * Supports both TypeScript and Python parsed files
  */
-export function chunkParsedFile(parsed: ParsedFile, options: ChunkerOptions): ChunkedFile {
+export function chunkParsedFile(parsed: UnifiedParsedFile, options: ChunkerOptions): ChunkedFile {
     const chunks: EntityChunk[] = [];
 
     for (const entity of parsed.entities) {
@@ -67,8 +73,9 @@ export function chunkParsedFile(parsed: ParsedFile, options: ChunkerOptions): Ch
 
 /**
  * Create chunks from a single entity, splitting if necessary
+ * Supports both TypeScript and Python entities
  */
-function createEntityChunks(entity: TypeScriptEntity, options: ChunkerOptions): EntityChunk[] {
+function createEntityChunks(entity: UnifiedEntity, options: ChunkerOptions): EntityChunk[] {
     const tokens = countTokens(entity.code, options.model);
 
     // Entity fits within limit
@@ -81,19 +88,38 @@ function createEntityChunks(entity: TypeScriptEntity, options: ChunkerOptions): 
 }
 
 /**
- * Convert a TypeScriptEntity to an EntityChunk
+ * Type guard to check if entity is a Python entity
  */
-function entityToChunk(entity: TypeScriptEntity, partNumber?: number, totalParts?: number): EntityChunk {
+function isPythonEntity(entity: UnifiedEntity): entity is PythonEntity {
+    return 'docstring' in entity && !('jsDoc' in entity);
+}
+
+/**
+ * Convert an entity (TypeScript or Python) to an EntityChunk
+ * Handles both jsDoc (TypeScript) and docstring (Python) properties
+ */
+function entityToChunk(entity: UnifiedEntity, partNumber?: number, totalParts?: number): EntityChunk {
+    // Extract docstring from either jsDoc (TypeScript) or docstring (Python)
+    const docstring = isPythonEntity(entity) 
+        ? entity.docstring 
+        : (entity as TypeScriptEntity).jsDoc;
+    
+    // Map Python entity types to TypeScript entity types
+    // Python "module" maps to a generic type, but we'll allow it
+    const entityType = entity.entityType === 'module' 
+        ? 'variable' as EntityType  // Map module to variable as fallback
+        : entity.entityType as EntityType;
+    
     return {
         qualifiedName: entity.qualifiedName,
-        entityType: entity.entityType,
+        entityType,
         content: entity.code,
         checksum: entity.checksum,
         parentContext: entity.parentContext,
         startLine: entity.startLine,
         endLine: entity.endLine,
         isExported: entity.isExported,
-        jsDoc: entity.jsDoc,
+        jsDoc: docstring, // Store in jsDoc field for consistency
         partNumber,
         totalParts,
     };
@@ -101,8 +127,9 @@ function entityToChunk(entity: TypeScriptEntity, partNumber?: number, totalParts
 
 /**
  * Split an oversized entity into multiple chunks
+ * Supports both TypeScript and Python entities
  */
-function splitEntity(entity: TypeScriptEntity, options: ChunkerOptions): EntityChunk[] {
+function splitEntity(entity: UnifiedEntity, options: ChunkerOptions): EntityChunk[] {
     const { tokenLimit, model } = options;
     const lines = entity.code.split("\n");
     const newlineTokens = countTokens("\n", model);
@@ -169,16 +196,20 @@ function splitEntity(entity: TypeScriptEntity, options: ChunkerOptions): EntityC
     }
 
     // Create chunks for each part
+    const entityType = entity.entityType === 'module' 
+        ? 'variable' as EntityType  // Map module to variable as fallback
+        : entity.entityType as EntityType;
+    
     return parts.map((content, index) => ({
         qualifiedName: `${entity.qualifiedName}_part${index + 1}`,
-        entityType: entity.entityType,
+        entityType,
         content,
         checksum: calculateChecksum(content),
         parentContext: entity.parentContext,
         startLine: entity.startLine,
         endLine: entity.endLine,
         isExported: entity.isExported,
-        jsDoc: index === 0 ? entity.jsDoc : undefined, // Only include JSDoc in first part
+        jsDoc: index === 0 ? (isPythonEntity(entity) ? entity.docstring : (entity as TypeScriptEntity).jsDoc) : undefined, // Only include docstring in first part
         partNumber: index + 1,
         totalParts: parts.length,
     }));
@@ -186,8 +217,9 @@ function splitEntity(entity: TypeScriptEntity, options: ChunkerOptions): EntityC
 
 /**
  * Create a signature header for split entities to provide context
+ * Supports both TypeScript and Python entities
  */
-function createSignatureHeader(entity: TypeScriptEntity): string | null {
+function createSignatureHeader(entity: UnifiedEntity): string | null {
     const lines = entity.code.split("\n");
     
     // Try to extract just the signature (first meaningful lines up to opening brace)

@@ -152,7 +152,7 @@ export async function runIngestionPipeline(
                 continue;
             }
 
-            const chunkedFile = chunkParsedFile(parsedFile as ParsedFile, {
+            const chunkedFile = chunkParsedFile(parsedFile, {
                 tokenLimit: chunkTokenLimit,
                 model: llm.embedding.config.model,
             });
