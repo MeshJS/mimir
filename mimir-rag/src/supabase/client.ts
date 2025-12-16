@@ -285,6 +285,9 @@ export class SupabaseVectorStore {
             movesByTarget.get(uniqueKey)!.push(move);
         }
 
+        let successfullyMoved = 0;
+        const strandedChunkIds: number[] = [];
+
         for (const [uniqueKey, targetMoves] of movesByTarget.entries()) {
             // If multiple chunks target the same (filepath, chunkId), only move the first one
             // This should not happen if the pipeline logic is correct, but we handle it defensively
@@ -292,6 +295,10 @@ export class SupabaseVectorStore {
                 this.logger.warn(
                     `Multiple chunks (${targetMoves.length}) targeting same location ${uniqueKey}. Only moving first chunk.`
                 );
+                // Track stranded chunks (those that won't be moved)
+                for (let i = 1; i < targetMoves.length; i++) {
+                    strandedChunkIds.push(targetMoves[i].id);
+                }
             }
             
             const move = targetMoves[0]; // Only move the first one
@@ -309,9 +316,18 @@ export class SupabaseVectorStore {
                 this.logger.error(`Failed to move chunk ${move.id} to final filepath: ${error.message}`);
                 throw new Error(`Failed to move chunk to final filepath: ${error.message}`);
             }
+            
+            successfullyMoved++;
         }
 
-        this.logger.info(`Moved ${moves.length} chunk${moves.length === 1 ? "" : "s"} to new locations.`);
+        // Log the actual number moved, and warn about stranded chunks
+        if (strandedChunkIds.length > 0) {
+            this.logger.warn(
+                `${strandedChunkIds.length} chunk${strandedChunkIds.length === 1 ? "" : "s"} left in temporary locations due to duplicate target locations. This indicates a bug in the pipeline logic.`
+            );
+        }
+
+        this.logger.info(`Moved ${successfullyMoved} of ${moves.length} chunk${moves.length === 1 ? "" : "s"} to new locations.`);
     }
 
     async findOrphanedChunkIds(activeChecksums: Set<string>): Promise<number[]> {
