@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
-import { extractTitle } from "../utils/extractTitle";
-import { calculateChecksum } from "../utils/calculateChecksum";
-import { countTokens, getEncoder } from "../utils/tokenEncoder";
+import { extractTitle } from "../../utils/extractTitle";
+import { calculateChecksum } from "../../utils/calculateChecksum";
+import { countTokens, getEncoder } from "../../utils/tokenEncoder";
 
 export interface MdxChunk {
     chunkTitle: string;

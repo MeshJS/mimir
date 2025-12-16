@@ -1,8 +1,8 @@
 import { Buffer } from "node:buffer";
-import type { TypeScriptEntity, EntityType, ParsedFile } from "./astParser";
-import type { ParsedPythonFile, PythonEntity } from "./pythonAstParser";
-import { calculateChecksum } from "../utils/calculateChecksum";
-import { countTokens, getEncoder } from "../utils/tokenEncoder";
+import type { TypeScriptEntity, EntityType, ParsedFile } from "../parsers/astParser";
+import type { ParsedPythonFile, PythonEntity } from "../parsers/pythonAstParser";
+import { calculateChecksum } from "../../utils/calculateChecksum";
+import { countTokens, getEncoder } from "../../utils/tokenEncoder";
 
 // Unified entity type that supports both TypeScript and Python entities
 type UnifiedEntity = TypeScriptEntity | PythonEntity;

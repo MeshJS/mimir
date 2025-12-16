@@ -4,7 +4,7 @@ import {
     normalizeRepoPath,
     encodeRepoPath,
 } from "../../github/utils";
-import { shouldExcludeFile, shouldIncludeFile } from "../typescript";
+import { shouldExcludeFile, shouldIncludeFile } from "./typescript";
 
 export interface GithubTreeEntry {
     path: string;

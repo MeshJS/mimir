@@ -1,6 +1,6 @@
 import type { DocumentChunk } from "../supabase/types";
 import type { ChatModelConfig, EmbeddingModelConfig } from "../config/types";
-import type { EntityType } from "../ingest/astParser";
+import type { EntityType } from "../ingest/parsers/astParser";
 
 export interface EmbedOptions {
     batchSize?: number;

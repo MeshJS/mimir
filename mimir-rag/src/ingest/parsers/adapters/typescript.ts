@@ -1,5 +1,5 @@
 import { parseTypescriptFile, ParsedFile, TypeScriptEntity } from "../astParser";
-import type { ParserConfig } from "../../config/types";
+import type { ParserConfig } from "../../../config/types";
 import type { CodeParsedFile, CodeEntity } from "./types";
 
 export function parseTypescriptCodeFile(

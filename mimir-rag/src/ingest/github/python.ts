@@ -1,16 +1,16 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Logger } from "pino";
-import type { AppConfig, ParserConfig } from "../config/types";
+import type { AppConfig, ParserConfig } from "../../config/types";
 import {
     DEFAULT_BRANCH,
     buildSourceUrl,
     computeRelativePath,
     joinRepoPaths,
     parseGithubUrl,
-} from "../github/utils";
-import { getLogger } from "../utils/logger";
-import { collectCodeFilesViaTree, collectCodeFilesLegacy } from "./github/common";
+} from "../../github/utils";
+import { getLogger } from "../../utils/logger";
+import { collectCodeFilesViaTree, collectCodeFilesLegacy } from "./common";
 
 export interface GithubPythonDocument {
     /** Full path in the repository */

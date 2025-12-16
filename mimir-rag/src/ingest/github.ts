@@ -13,8 +13,8 @@ import {
 } from "../github/utils";
 import { getLogger } from "../utils/logger";
 import pLimit from "p-limit";
-import { downloadGithubTypescriptFiles, GithubTypescriptDocument } from "./typescript";
-import { downloadGithubPythonFiles, GithubPythonDocument } from "./python";
+import { downloadGithubTypescriptFiles, GithubTypescriptDocument } from "./github/typescript";
+import { downloadGithubPythonFiles, GithubPythonDocument } from "./github/python";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const RAW_GITHUB_BASE = "https://raw.githubusercontent.com";

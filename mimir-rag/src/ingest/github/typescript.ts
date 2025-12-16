@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Logger } from "pino";
-import type { AppConfig, ParserConfig } from "../config/types";
+import type { AppConfig, ParserConfig } from "../../config/types";
 import {
     DEFAULT_BRANCH,
     buildSourceUrl,
@@ -9,9 +9,9 @@ import {
     joinRepoPaths,
     normalizeRepoPath,
     parseGithubUrl,
-} from "../github/utils";
-import { getLogger } from "../utils/logger";
-import { collectCodeFilesViaTree, collectCodeFilesLegacy } from "./github/common";
+} from "../../github/utils";
+import { getLogger } from "../../utils/logger";
+import { collectCodeFilesViaTree, collectCodeFilesLegacy } from "./common";
 
 export interface GithubTypescriptDocument {
     /** Full path in the repository */

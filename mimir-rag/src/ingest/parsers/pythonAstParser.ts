@@ -1,4 +1,4 @@
-import { calculateChecksum } from "../utils/calculateChecksum";
+import { calculateChecksum } from "../../utils/calculateChecksum";
 import { Parser, Language, Node } from "web-tree-sitter";
 import path from "node:path";
 
@@ -77,7 +77,7 @@ async function getParser(): Promise<Parser> {
         await Parser.init();
         
         // Load Python language from WASM file
-        const pythonWasmPath = path.join(__dirname, "../../node_modules/tree-sitter-python/tree-sitter-python.wasm");
+        const pythonWasmPath = path.join(__dirname, "../../../node_modules/tree-sitter-python/tree-sitter-python.wasm");
         const PythonLang = await Language.load(pythonWasmPath);
         const parser = new Parser();
         parser.setLanguage(PythonLang);
