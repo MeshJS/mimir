@@ -302,7 +302,10 @@ export class SupabaseVectorStore {
             }
             
             const move = targetMoves[0]; // Only move the first one
-            const updateData: any = { filepath: move.filepath };
+            const updateData: any = { 
+                filepath: move.filepath,
+                chunk_id: move.chunkId 
+            };
             if (move.sourceType) {
                 updateData.source_type = move.sourceType;
             }
