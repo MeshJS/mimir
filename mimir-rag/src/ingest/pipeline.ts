@@ -210,13 +210,12 @@ export async function runIngestionPipeline(
     const assignedTargetLocations = new Set<string>();
 
     /**
-     * Normalize legacy source types to new normalized values for comparison
-     * Legacy: 'typescript', 'python', 'mdx' -> New: 'code', 'doc'
+     * Normalize source types to standardized values for comparison
+     * 'typescript', 'python' -> 'code'; 'mdx' -> 'doc'
      */
     function normalizeSourceType(sourceType?: string): 'doc' | 'code' | undefined {
         if (!sourceType) return undefined;
         if (sourceType === 'code' || sourceType === 'doc') return sourceType;
-        // Normalize legacy values
         if (sourceType === 'typescript' || sourceType === 'python') return 'code';
         if (sourceType === 'mdx') return 'doc';
         return undefined;
