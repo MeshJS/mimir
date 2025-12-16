@@ -242,38 +242,61 @@ export class SupabaseVectorStore {
             return;
         }
 
-        // Phase 1: Move all chunks to temporary filepaths to avoid unique constraint conflicts
-        for (const move of moves) {
-            const tempFilepath = `__moving__${move.id}`;
-            const updateData: any = { filepath: tempFilepath, chunk_id: move.chunkId };
-            if (move.sourceType) {
-                updateData.source_type = move.sourceType;
-            }
-            const { error } = await this.client
-                .from(this.config.table)
-                .update(updateData)
-                .eq("id", move.id);
+        const moveIds = moves.map(m => m.id);
 
-            if (error) {
-                this.logger.error(`Failed to move chunk ${move.id} to temp filepath: ${error.message}`);
-                throw new Error(`Failed to move chunk to temp filepath: ${error.message}`);
-            }
+        // Phase 1: Move all chunks to temporary filepaths to avoid unique constraint conflicts
+        // Each chunk needs a unique temp filepath, so we must update individually
+        // But we can process them in parallel batches for better performance
+        const BATCH_SIZE = 50;
+        for (let i = 0; i < moves.length; i += BATCH_SIZE) {
+            const batch = moves.slice(i, i + BATCH_SIZE);
+            await Promise.all(
+                batch.map(async (move) => {
+                    const tempFilepath = `__moving__${move.id}`;
+                    const updateData: any = { filepath: tempFilepath, chunk_id: move.chunkId };
+                    if (move.sourceType) {
+                        updateData.source_type = move.sourceType;
+                    }
+                    const { error } = await this.client
+                        .from(this.config.table)
+                        .update(updateData)
+                        .eq("id", move.id);
+
+                    if (error) {
+                        this.logger.error(`Failed to move chunk ${move.id} to temp filepath: ${error.message}`);
+                        throw new Error(`Failed to move chunk to temp filepath: ${error.message}`);
+                    }
+                })
+            );
         }
 
-        // Phase 2: Move all chunks to their final filepaths
+        // Phase 2: Batch update to final filepaths
+        // Group by (filepath, chunkId, sourceType) to batch updates with same values
+        const movesByTarget = new Map<string, typeof moves>();
         for (const move of moves) {
-            const updateData: any = { filepath: move.filepath };
-            if (move.sourceType) {
-                updateData.source_type = move.sourceType;
+            const key = `${move.filepath}:${move.chunkId}:${move.sourceType ?? 'null'}`;
+            if (!movesByTarget.has(key)) {
+                movesByTarget.set(key, []);
             }
+            movesByTarget.get(key)!.push(move);
+        }
+
+        for (const [targetKey, targetMoves] of movesByTarget.entries()) {
+            const ids = targetMoves.map(m => m.id);
+            const firstMove = targetMoves[0];
+            const updateData: any = { filepath: firstMove.filepath };
+            if (firstMove.sourceType) {
+                updateData.source_type = firstMove.sourceType;
+            }
+
             const { error } = await this.client
                 .from(this.config.table)
                 .update(updateData)
-                .eq("id", move.id);
+                .in("id", ids);
 
             if (error) {
-                this.logger.error(`Failed to move chunk ${move.id} to final filepath: ${error.message}`);
-                throw new Error(`Failed to move chunk to final filepath: ${error.message}`);
+                this.logger.error(`Failed to move ${ids.length} chunk${ids.length === 1 ? "" : "s"} to final filepath: ${error.message}`);
+                throw new Error(`Failed to move chunks to final filepath: ${error.message}`);
             }
         }
 

@@ -251,10 +251,28 @@ export async function runIngestionPipeline(
             );
 
             if (alreadyInPlace) {
-                // This DB row is already where we want it - no changes needed
-                classifications.push({ type: "unchanged", existingId: alreadyInPlace.id });
-                alreadyAssignedDbIds.add(alreadyInPlace.id);
-                assignedTargetLocations.add(targetLocationKey);
+                // Check if sourceType needs updating (legacy -> normalized)
+                const needsSourceTypeUpdate = 
+                    normalizeSourceType(alreadyInPlace.sourceType) === normalizeSourceType(target.sourceType) &&
+                    alreadyInPlace.sourceType !== target.sourceType;
+                
+                if (needsSourceTypeUpdate) {
+                    // Same location and normalized type, but legacy value needs updating
+                    classifications.push({
+                        type: "moved",
+                        existingId: alreadyInPlace.id,
+                        newFilepath: target.filepath,
+                        newChunkId: target.chunkId,
+                        newSourceType: target.sourceType,
+                    });
+                    alreadyAssignedDbIds.add(alreadyInPlace.id);
+                    assignedTargetLocations.add(targetLocationKey);
+                } else {
+                    // This DB row is already where we want it - no changes needed
+                    classifications.push({ type: "unchanged", existingId: alreadyInPlace.id });
+                    alreadyAssignedDbIds.add(alreadyInPlace.id);
+                    assignedTargetLocations.add(targetLocationKey);
+                }
             } else {
                 // No DB row at the target location. Find any unassigned DB row we can move there.
                 const reusableDbChunk = dbChunksWithSameChecksum.find(
