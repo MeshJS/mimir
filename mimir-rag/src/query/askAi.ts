@@ -71,11 +71,13 @@ function buildSourcesFromChunks(chunks: RetrievedChunk[]): AskAiSource[] {
 
         if (!isDocFile && effectiveGithubUrl && hasLineInfo) {
             // Build a line-anchored GitHub URL for code entities
+            // Strip any existing anchor (slug) from githubUrl before appending line anchor
+            const baseUrl = effectiveGithubUrl.split('#')[0];
             const anchor =
                 startLine === endLine
                     ? `#L${startLine}`
                     : `#L${startLine}-L${endLine}`;
-            effectiveFinalUrl = `${effectiveGithubUrl}${anchor}`;
+            effectiveFinalUrl = `${baseUrl}${anchor}`;
         } else if (isDocFile && effectiveDocsUrl) {
             // For docs, prefer the hosted docs URL
             effectiveFinalUrl = effectiveDocsUrl;

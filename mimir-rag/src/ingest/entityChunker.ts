@@ -134,16 +134,23 @@ function splitEntity(entity: UnifiedEntity, options: ChunkerOptions): EntityChun
     const lines = entity.code.split("\n");
     const newlineTokens = countTokens("\n", model);
 
-    const parts: string[] = [];
+    interface PartInfo {
+        content: string;
+        startLineIndex: number; // 0-based index in lines array
+        endLineIndex: number;    // 0-based index in lines array (exclusive)
+    }
+
+    const parts: PartInfo[] = [];
     let currentLines: string[] = [];
     let currentTokens = 0;
+    let currentStartLineIndex = 0; // Track the starting line index for current part
 
     // Try to create a header with signature info for context in each part
     const signatureHeader = createSignatureHeader(entity);
     const headerTokens = signatureHeader ? countTokens(signatureHeader + "\n", model) : 0;
     const effectiveLimit = tokenLimit - headerTokens;
 
-    const flush = () => {
+    const flush = (endLineIndex: number) => {
         if (currentLines.length === 0) return;
 
         const content = currentLines.join("\n");
@@ -151,7 +158,11 @@ function splitEntity(entity: UnifiedEntity, options: ChunkerOptions): EntityChun
             const partContent = signatureHeader 
                 ? `${signatureHeader}\n// ... (continued)\n${content}`
                 : content;
-            parts.push(partContent);
+            parts.push({
+                content: partContent,
+                startLineIndex: currentStartLineIndex,
+                endLineIndex: endLineIndex,
+            });
         }
         currentLines = [];
         currentTokens = 0;
@@ -163,56 +174,77 @@ function splitEntity(entity: UnifiedEntity, options: ChunkerOptions): EntityChun
 
         // Handle oversized lines
         if (lineTokens > effectiveLimit) {
-            flush();
+            flush(i); // Flush current part before handling oversized line
             const oversizedParts = hardSplitLine(line, effectiveLimit, model);
-            for (const part of oversizedParts) {
+            for (let partIndex = 0; partIndex < oversizedParts.length; partIndex++) {
                 const partContent = signatureHeader
-                    ? `${signatureHeader}\n// ... (continued)\n${part}`
-                    : part;
-                parts.push(partContent);
+                    ? `${signatureHeader}\n// ... (continued)\n${oversizedParts[partIndex]}`
+                    : oversizedParts[partIndex];
+                // For oversized lines split into multiple parts, each part covers the same line
+                parts.push({
+                    content: partContent,
+                    startLineIndex: i,
+                    endLineIndex: i + 1, // Same line, exclusive end
+                });
             }
+            // Reset for next part after oversized line
+            currentStartLineIndex = i + 1;
             continue;
         }
 
         // Skip leading empty lines in new chunks
         if (currentLines.length === 0 && line.trim().length === 0) {
+            currentStartLineIndex = i + 1; // Update start index to skip empty line
             continue;
         }
 
         const additionalTokens = lineTokens + (currentLines.length > 0 ? newlineTokens : 0);
         if (currentTokens + additionalTokens > effectiveLimit) {
-            flush();
+            flush(i); // Flush current part, endLineIndex is exclusive (points to current line)
+            currentStartLineIndex = i; // Next part starts at current line
+        }
+
+        if (currentLines.length === 0) {
+            currentStartLineIndex = i; // Track start of new part
         }
 
         currentLines.push(line);
         currentTokens += lineTokens + (currentLines.length === 1 ? 0 : newlineTokens);
     }
 
-    flush();
+    flush(lines.length); // Flush final part
 
     // If only one part, return as-is
     if (parts.length <= 1) {
         return [entityToChunk(entity)];
     }
 
-    // Create chunks for each part
+    // Create chunks for each part with correct line ranges
     const entityType = entity.entityType === 'module' 
         ? 'variable' as EntityType  // Map module to variable as fallback
         : entity.entityType as EntityType;
     
-    return parts.map((content, index) => ({
-        qualifiedName: `${entity.qualifiedName}_part${index + 1}`,
-        entityType,
-        content,
-        checksum: calculateChecksum(content),
-        parentContext: entity.parentContext,
-        startLine: entity.startLine,
-        endLine: entity.endLine,
-        isExported: entity.isExported,
-        jsDoc: index === 0 ? (isPythonEntity(entity) ? entity.docstring : (entity as TypeScriptEntity).jsDoc) : undefined, // Only include docstring in first part
-        partNumber: index + 1,
-        totalParts: parts.length,
-    }));
+    return parts.map((part, index) => {
+        // Calculate actual line numbers (1-based) for this part
+        // startLineIndex is 0-based, so add 1 to get 1-based start line
+        // endLineIndex is exclusive (points to line after), so it's already the correct 1-based end line
+        const partStartLine = entity.startLine + part.startLineIndex;
+        const partEndLine = entity.startLine + part.endLineIndex - 1; // Convert exclusive to inclusive
+        
+        return {
+            qualifiedName: `${entity.qualifiedName}_part${index + 1}`,
+            entityType,
+            content: part.content,
+            checksum: calculateChecksum(part.content),
+            parentContext: entity.parentContext,
+            startLine: partStartLine,
+            endLine: partEndLine,
+            isExported: entity.isExported,
+            jsDoc: index === 0 ? (isPythonEntity(entity) ? entity.docstring : (entity as TypeScriptEntity).jsDoc) : undefined, // Only include docstring in first part
+            partNumber: index + 1,
+            totalParts: parts.length,
+        };
+    });
 }
 
 /**
