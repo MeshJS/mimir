@@ -414,7 +414,7 @@ export async function runIngestionPipeline(
             });
 
             const contextTask = llm.chat
-                .generateEntityContexts(entityInputs, document.content)
+                .generateEntityContexts(entityInputs, document.content, filepath)
                 .then((contexts) => {
                     if (contexts.length !== chunks.length) {
                         throw new Error(

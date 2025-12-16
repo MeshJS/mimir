@@ -12,8 +12,28 @@ The context should help someone searching for this code understand what it does 
 
 Be precise and technical. Focus on WHAT the code does and WHY, not HOW (the code itself shows that).`;
 
-export function buildEntityContextPrompt(entity: EntityContextInput): string {
+/**
+ * Determine programming language from filepath
+ */
+function getLanguageFromFilepath(filepath?: string): string {
+    if (!filepath) return "typescript"; // Default fallback
+    
+    const lower = filepath.toLowerCase();
+    if (lower.endsWith(".py")) return "python";
+    if (lower.endsWith(".ts") || lower.endsWith(".tsx")) return "typescript";
+    if (lower.endsWith(".js") || lower.endsWith(".jsx")) return "javascript";
+    if (lower.endsWith(".rs")) return "rust";
+    if (lower.endsWith(".go")) return "go";
+    if (lower.endsWith(".java")) return "java";
+    if (lower.endsWith(".cpp") || lower.endsWith(".cc") || lower.endsWith(".cxx")) return "cpp";
+    if (lower.endsWith(".c")) return "c";
+    
+    return "typescript"; // Default fallback
+}
+
+export function buildEntityContextPrompt(entity: EntityContextInput, filepath?: string): string {
     const parts: string[] = [];
+    const language = getLanguageFromFilepath(filepath);
 
     parts.push(`Entity Type: ${entity.entityType}`);
     parts.push(`Entity Name: ${entity.entityName}`);
@@ -30,20 +50,21 @@ export function buildEntityContextPrompt(entity: EntityContextInput): string {
         parts.push(`\nRelevant Imports:\n${entity.imports.slice(0, 10).join("\n")}`);
     }
 
-    parts.push(`\nCode:\n\`\`\`typescript\n${entity.entityCode}\n\`\`\``);
+    parts.push(`\nCode:\n\`\`\`${language}\n${entity.entityCode}\n\`\`\``);
 
     return parts.join("\n");
 }
 
-export function buildBatchContextPrompt(entities: EntityContextInput[], fileContent: string): string {
+export function buildBatchContextPrompt(entities: EntityContextInput[], fileContent: string, filepath?: string): string {
+    const language = getLanguageFromFilepath(filepath);
     const entitySections = entities.map((entity, index) => {
-        return `--- Entity ${index + 1} ---\n${buildEntityContextPrompt(entity)}`;
+        return `--- Entity ${index + 1} ---\n${buildEntityContextPrompt(entity, filepath)}`;
     }).join("\n\n");
 
     return `Generate context descriptions for the following ${entities.length} code entities from the same file.
 
 File Context (truncated if large):
-\`\`\`
+\`\`\`${language}
 ${truncateFileContent(fileContent, 2000)}
 \`\`\`
 
