@@ -353,37 +353,74 @@ export class SupabaseVectorStore {
         this.logger.info(`Moved ${successfullyMoved} of ${moves.length} chunk${moves.length === 1 ? "" : "s"} to new locations.`);
     }
 
-    async findOrphanedChunkIds(activeChecksums: Set<string>): Promise<number[]> {
-        if (activeChecksums.size === 0) {
-            // If no active checksums, all chunks are orphaned
-            const { data, error } = await this.client
-                .from(this.config.table)
-                .select("id");
-
-            if (error) {
-                this.logger.error(`Failed to fetch all chunk ids: ${error.message}`);
-                throw new Error(`Failed to fetch all chunk ids: ${error.message}`);
-            }
-
-            return (data ?? []).map((row) => row.id);
-        }
-
-        // Fetch all chunks and filter out those with active checksums
+    /**
+     * Find orphaned chunks (chunks not in active checksums) scoped to specific repositories.
+     * Only chunks from the provided repositories are considered for orphan detection.
+     * 
+     * @param activeChecksums - Set of checksums that are currently active (should be kept)
+     * @param repositoryIdentifiers - Set of repository identifiers (e.g., "owner/repo") to scope orphan detection to.
+     *                                If empty, orphan detection is scoped to all repositories (backward compatible).
+     */
+    async findOrphanedChunkIds(
+        activeChecksums: Set<string>,
+        repositoryIdentifiers?: Set<string>
+    ): Promise<number[]> {
+        // Fetch all chunks (we'll filter by repository in JavaScript for reliability)
         const { data, error } = await this.client
             .from(this.config.table)
-            .select("id, checksum");
+            .select("id, checksum, github_url");
 
         if (error) {
             this.logger.error(`Failed to fetch chunks for orphan detection: ${error.message}`);
             throw new Error(`Failed to fetch chunks for orphan detection: ${error.message}`);
         }
 
-        const orphanedIds: number[] = [];
-        (data ?? []).forEach((row) => {
-            if (!activeChecksums.has(row.checksum)) {
-                orphanedIds.push(row.id);
+        if (!data || data.length === 0) {
+            return [];
+        }
+
+        // If no active checksums, all chunks in the scoped repositories are orphaned
+        if (activeChecksums.size === 0) {
+            if (repositoryIdentifiers && repositoryIdentifiers.size > 0) {
+                // Filter to only chunks from scoped repositories
+                return data
+                    .filter((row) => {
+                        if (!row.github_url) return false;
+                        const match = row.github_url.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+                        if (!match) return false;
+                        const repoIdentifier = `${match[1]}/${match[2]}`;
+                        return repositoryIdentifiers.has(repoIdentifier);
+                    })
+                    .map((row) => row.id);
             }
-        });
+            // Backward compatible: if no repository scope, all chunks are orphaned
+            return data.map((row) => row.id);
+        }
+
+        // Filter chunks: orphaned if checksum is not active AND belongs to scoped repositories
+        const orphanedIds: number[] = [];
+        for (const row of data) {
+            // Only consider chunks that don't have active checksums
+            if (!activeChecksums.has(row.checksum)) {
+                // If repository identifiers are provided, verify this chunk belongs to one of them
+                if (repositoryIdentifiers && repositoryIdentifiers.size > 0) {
+                    const githubUrl = row.github_url;
+                    if (githubUrl) {
+                        // Extract owner/repo from github_url (format: https://github.com/owner/repo/...)
+                        const match = githubUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+                        if (match) {
+                            const repoIdentifier = `${match[1]}/${match[2]}`;
+                            if (repositoryIdentifiers.has(repoIdentifier)) {
+                                orphanedIds.push(row.id);
+                            }
+                        }
+                    }
+                } else {
+                    // No repository scope - backward compatible behavior
+                    orphanedIds.push(row.id);
+                }
+            }
+        }
 
         return orphanedIds;
     }
@@ -393,12 +430,19 @@ export class SupabaseVectorStore {
      * These are chunks that were left in temporary locations from previous failed moves.
      * They should be cleaned up if their target location is already occupied by another chunk
      * with the same checksum (duplicate), or if they're no longer needed.
+     * 
+     * @param activeChecksums - Set of checksums that are currently active (should be kept)
+     * @param repositoryIdentifiers - Set of repository identifiers (e.g., "owner/repo") to scope detection to.
+     *                                If empty, detection is scoped to all repositories (backward compatible).
      */
-    async findStrandedChunkIds(activeChecksums: Set<string>): Promise<number[]> {
+    async findStrandedChunkIds(
+        activeChecksums: Set<string>,
+        repositoryIdentifiers?: Set<string>
+    ): Promise<number[]> {
         // Find all chunks in temporary __moving__ locations
         const { data, error } = await this.client
             .from(this.config.table)
-            .select("id, checksum, filepath")
+            .select("id, checksum, filepath, github_url")
             .like("filepath", "__moving__%");
 
         if (error) {
@@ -425,8 +469,25 @@ export class SupabaseVectorStore {
             // we'll clean it up on the next run
             // For now, we'll be conservative and only delete stranded chunks whose
             // checksums are no longer active
+            
             if (!activeChecksums.has(chunk.checksum)) {
-                strandedIds.push(chunk.id);
+                // If repository identifiers are provided, verify this chunk belongs to one of them
+                if (repositoryIdentifiers && repositoryIdentifiers.size > 0) {
+                    const githubUrl = chunk.github_url;
+                    if (githubUrl) {
+                        // Extract owner/repo from github_url (format: https://github.com/owner/repo/...)
+                        const match = githubUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+                        if (match) {
+                            const repoIdentifier = `${match[1]}/${match[2]}`;
+                            if (repositoryIdentifiers.has(repoIdentifier)) {
+                                strandedIds.push(chunk.id);
+                            }
+                        }
+                    }
+                } else {
+                    // No repository scope - backward compatible behavior
+                    strandedIds.push(chunk.id);
+                }
             }
         }
 

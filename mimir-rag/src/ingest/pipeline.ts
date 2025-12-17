@@ -12,6 +12,7 @@ import type { SupabaseVectorStore } from "../supabase/client";
 import type { DocumentChunk } from "../supabase/types";
 import { resolveEmbeddingInputTokenLimit } from "../llm/modelLimits";
 import { resolveSourceLinks } from "../utils/sourceLinks";
+import { parseGithubUrl } from "../github/utils";
 
 interface PendingEmbeddingChunk {
     filepath: string;
@@ -350,11 +351,40 @@ export async function runIngestionPipeline(
     // Find orphaned chunks (checksums not in target state)
     const activeChecksums = new Set(targetState.keys());
     
+    // Extract repository identifiers from the config to scope orphan detection
+    // This prevents deleting chunks from other repositories when ingesting a new one
+    const repositoryIdentifiers = new Set<string>();
+    const githubConfig = appConfig.github;
+    
+    // Extract from main URL, code URL, and docs URL
+    const urlsToCheck = [
+        githubConfig.githubUrl,
+        githubConfig.codeUrl,
+        githubConfig.docsUrl,
+    ].filter((url): url is string => Boolean(url));
+    
+    for (const url of urlsToCheck) {
+        try {
+            const parsed = parseGithubUrl(url);
+            const repoIdentifier = `${parsed.owner}/${parsed.repo}`;
+            repositoryIdentifiers.add(repoIdentifier);
+        } catch (error) {
+            ingestionLogger.warn({ err: error, url }, "Failed to parse GitHub URL for repository scoping");
+        }
+    }
+    
     // Also find and mark stranded chunks in __moving__ locations for cleanup
     // These are chunks that were left in temporary locations from previous failed moves
-    const strandedChunkIds = await store.findStrandedChunkIds(activeChecksums);
+    const strandedChunkIds = await store.findStrandedChunkIds(
+        activeChecksums,
+        repositoryIdentifiers.size > 0 ? repositoryIdentifiers : undefined
+    );
     
-    const orphanedIds = await store.findOrphanedChunkIds(activeChecksums);
+    // Pass repository identifiers to scope orphan detection to only the repositories being ingested
+    const orphanedIds = await store.findOrphanedChunkIds(
+        activeChecksums,
+        repositoryIdentifiers.size > 0 ? repositoryIdentifiers : undefined
+    );
 
     // Move chunks to new locations (two-phase to avoid conflicts)
     const movedChunks = classifications.filter(
