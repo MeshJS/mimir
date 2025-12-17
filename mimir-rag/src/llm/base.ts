@@ -29,6 +29,7 @@ export abstract class BaseEmbeddingProvider implements EmbeddingProvider {
 
     private readonly requestLimiter: Bottleneck;
     private readonly tokenLimiter?: Bottleneck;
+    private readonly tokenLimiterMaxConcurrent?: number;
 
     constructor(
         public readonly config: EmbeddingModelConfig,
@@ -46,6 +47,7 @@ export abstract class BaseEmbeddingProvider implements EmbeddingProvider {
                 this.concurrencyLimit,
                 Math.ceil(limits.maxTokensPerMinute)
             );
+            this.tokenLimiterMaxConcurrent = tokenConcurrency;
             this.tokenLimiter = createRateLimiter(tokenConcurrency, limits.maxTokensPerMinute);
         }
     }
@@ -104,7 +106,10 @@ export abstract class BaseEmbeddingProvider implements EmbeddingProvider {
             return;
         }
 
-        const weight = Math.max(1, Math.ceil(tokens));
+        // Cap weight to maxConcurrent to prevent BottleneckError
+        // Bottleneck doesn't allow weight > maxConcurrent
+        const maxConcurrent = this.tokenLimiterMaxConcurrent ?? this.concurrencyLimit;
+        const weight = Math.max(1, Math.min(Math.ceil(tokens), maxConcurrent));
         await this.tokenLimiter.schedule({ weight }, async () => undefined);
     }
 }
@@ -115,6 +120,7 @@ export abstract class BaseChatProvider implements ChatProvider {
 
     private readonly requestLimiter: Bottleneck;
     private readonly tokenLimiter?: Bottleneck;
+    private readonly tokenLimiterMaxConcurrent?: number;
 
     constructor(
         public readonly config: ChatModelConfig,
@@ -131,6 +137,7 @@ export abstract class BaseChatProvider implements ChatProvider {
                 this.concurrencyLimit,
                 Math.ceil(limits.maxTokensPerMinute)
             );
+            this.tokenLimiterMaxConcurrent = tokenConcurrency;
             this.tokenLimiter = createRateLimiter(tokenConcurrency, limits.maxTokensPerMinute);
         }
     }
@@ -265,7 +272,10 @@ export abstract class BaseChatProvider implements ChatProvider {
             return;
         }
 
-        const weight = Math.max(1, Math.ceil(tokens));
+        // Cap weight to maxConcurrent to prevent BottleneckError
+        // Bottleneck doesn't allow weight > maxConcurrent
+        const maxConcurrent = this.tokenLimiterMaxConcurrent ?? this.concurrencyLimit;
+        const weight = Math.max(1, Math.min(Math.ceil(tokens), maxConcurrent));
         await this.tokenLimiter.schedule({ weight }, async () => undefined);
     }
 }
