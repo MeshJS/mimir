@@ -1,6 +1,6 @@
 import type { EntityContextInput } from "./types";
 
-const ENTITY_CONTEXT_SYSTEM_PROMPT = `You are a code documentation expert. Your task is to generate concise, informative context descriptions for TypeScript code entities.
+const ENTITY_CONTEXT_SYSTEM_PROMPT = `You are a code documentation expert. Your task is to generate concise, informative context descriptions for code entities (for example, TypeScript or Python).
 
 For each code entity provided, write a short context (100-200 tokens) that:
 1. Explains the entity's purpose and role in the codebase
@@ -12,8 +12,28 @@ The context should help someone searching for this code understand what it does 
 
 Be precise and technical. Focus on WHAT the code does and WHY, not HOW (the code itself shows that).`;
 
-export function buildEntityContextPrompt(entity: EntityContextInput): string {
+/**
+ * Determine programming language from filepath
+ */
+function getLanguageFromFilepath(filepath?: string): string {
+    if (!filepath) return "typescript"; // Default fallback
+    
+    const lower = filepath.toLowerCase();
+    if (lower.endsWith(".py")) return "python";
+    if (lower.endsWith(".ts") || lower.endsWith(".tsx")) return "typescript";
+    if (lower.endsWith(".js") || lower.endsWith(".jsx")) return "javascript";
+    if (lower.endsWith(".rs")) return "rust";
+    if (lower.endsWith(".go")) return "go";
+    if (lower.endsWith(".java")) return "java";
+    if (lower.endsWith(".cpp") || lower.endsWith(".cc") || lower.endsWith(".cxx")) return "cpp";
+    if (lower.endsWith(".c")) return "c";
+    
+    return "typescript"; // Default fallback
+}
+
+export function buildEntityContextPrompt(entity: EntityContextInput, filepath?: string): string {
     const parts: string[] = [];
+    const language = getLanguageFromFilepath(filepath);
 
     parts.push(`Entity Type: ${entity.entityType}`);
     parts.push(`Entity Name: ${entity.entityName}`);
@@ -30,21 +50,22 @@ export function buildEntityContextPrompt(entity: EntityContextInput): string {
         parts.push(`\nRelevant Imports:\n${entity.imports.slice(0, 10).join("\n")}`);
     }
 
-    parts.push(`\nCode:\n\`\`\`typescript\n${entity.entityCode}\n\`\`\``);
+    parts.push(`\nCode:\n\`\`\`${language}\n${entity.entityCode}\n\`\`\``);
 
     return parts.join("\n");
 }
 
-export function buildBatchContextPrompt(entities: EntityContextInput[], fileContent: string): string {
+export function buildBatchContextPrompt(entities: EntityContextInput[], fileContent: string, filepath?: string): string {
+    const language = getLanguageFromFilepath(filepath);
     const entitySections = entities.map((entity, index) => {
-        return `--- Entity ${index + 1} ---\n${buildEntityContextPrompt(entity)}`;
+        return `--- Entity ${index + 1} ---\n${buildEntityContextPrompt(entity, filepath)}`;
     }).join("\n\n");
 
-    return `Generate context descriptions for the following ${entities.length} TypeScript entities from the same file.
+    return `Generate context descriptions for the following ${entities.length} code entities from the same file.
 
-File Context (truncated if large):
-\`\`\`typescript
-${truncateFileContent(fileContent, 2000)}
+File Context:
+\`\`\`${language}
+${fileContent}
 \`\`\`
 
 ${entitySections}
@@ -52,21 +73,6 @@ ${entitySections}
 For each entity, provide a concise context description (100-200 tokens) that explains its purpose, key characteristics, and relationships. Format your response as a numbered list matching the entity numbers above.`;
 }
 
-function truncateFileContent(content: string, maxChars: number): string {
-    if (content.length <= maxChars) {
-        return content;
-    }
-
-    // Try to cut at a reasonable point
-    const truncated = content.slice(0, maxChars);
-    const lastNewline = truncated.lastIndexOf("\n");
-    
-    if (lastNewline > maxChars * 0.8) {
-        return truncated.slice(0, lastNewline) + "\n// ... (file truncated)";
-    }
-
-    return truncated + "\n// ... (file truncated)";
-}
 
 export function getEntityContextSystemPrompt(): string {
     return ENTITY_CONTEXT_SYSTEM_PROMPT;

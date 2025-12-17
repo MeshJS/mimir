@@ -24,7 +24,7 @@ export interface GithubConfig {
     githubUrl: string;
     directory?: string; // Directory for main repo (fallback if separate not set)
     includeDirectories?: string[]; // Include directories for main repo (fallback if separate not set)
-    codeUrl?: string; // Optional: separate repo for TypeScript code
+    codeUrl?: string; // Optional: separate repo for code (TypeScript, Python, etc.)
     codeDirectory?: string; // Optional: directory for code repo
     codeIncludeDirectories?: string[]; // Optional: include directories for code repo
     docsUrl?: string; // Optional: separate repo for MDX docs

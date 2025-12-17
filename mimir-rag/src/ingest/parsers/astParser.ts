@@ -1,6 +1,6 @@
 import ts from "typescript";
-import { calculateChecksum } from "../utils/calculateChecksum";
-import type { ParserConfig } from "../config/types";
+import { calculateChecksum } from "../../utils/calculateChecksum";
+import type { ParserConfig } from "../../config/types";
 
 export type EntityType = "function" | "class" | "interface" | "type" | "enum" | "method" | "variable";
 

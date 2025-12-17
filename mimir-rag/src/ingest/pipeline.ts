@@ -3,9 +3,10 @@ import type { AppConfig } from "../config/types";
 import type { LLMClientBundle, EntityContextInput } from "../llm/types";
 import { getLogger } from "../utils/logger";
 import { downloadGithubFiles, downloadGithubMdxFiles, GithubMdxDocument, GithubDocument, GithubDocumentType } from "./github";
-import { chunkMdxFile, enforceChunkTokenLimit, MdxChunk } from "./chunker";
-import { parseTypescriptFile, ParsedFile } from "./astParser";
-import { chunkParsedFile, EntityChunk } from "./entityChunker";
+import { chunkMdxFile, enforceChunkTokenLimit, MdxChunk } from "./chunkers/chunker";
+import { parseTypescriptFile, ParsedFile } from "./parsers/astParser";
+import { parsePythonFile, ParsedPythonFile } from "./parsers/pythonAstParser";
+import { chunkParsedFile, EntityChunk } from "./chunkers/entityChunker";
 import type { SupabaseVectorStore } from "../supabase/client";
 import type { DocumentChunk } from "../supabase/types";
 import { resolveEmbeddingInputTokenLimit } from "../llm/modelLimits";
@@ -18,32 +19,32 @@ interface PendingEmbeddingChunk {
     checksum: string;
     content: string;
     contextualText: string;
-    sourceType: 'mdx' | 'typescript';
+    sourceType: 'doc' | 'code';
     entityType?: string;
     startLine?: number;
     endLine?: number;
     githubUrl?: string;
 }
 
-/** Unified chunk type for both MDX and TypeScript */
+/** Unified chunk type for both docs (MDX) and code entities */
 type UnifiedChunk = 
-    | { sourceType: 'mdx'; chunk: MdxChunk }
-    | { sourceType: 'typescript'; chunk: EntityChunk };
+    | { sourceType: 'doc'; chunk: MdxChunk }
+    | { sourceType: 'code'; chunk: EntityChunk };
 
 /** Target location for a chunk in the new state */
 interface TargetChunkLocation {
     filepath: string;
     chunkId: number;
     chunk: UnifiedChunk;
-    sourceType: 'mdx' | 'typescript';
+    sourceType: 'doc' | 'code';
     githubUrl?: string;
 }
 
 /** Classification of how a chunk should be handled */
 type ChunkClassification =
     | { type: "unchanged"; existingId: number }
-    | { type: "moved"; existingId: number; newFilepath: string; newChunkId: number; newSourceType: 'mdx' | 'typescript' }
-    | { type: "new"; chunk: UnifiedChunk; filepath: string; chunkId: number; sourceType: 'mdx' | 'typescript'; githubUrl?: string };
+    | { type: "moved"; existingId: number; newFilepath: string; newChunkId: number; newSourceType: 'doc' | 'code' }
+    | { type: "new"; chunk: UnifiedChunk; filepath: string; chunkId: number; sourceType: 'doc' | 'code'; githubUrl?: string };
 
 export interface IngestionPipelineStats {
     processedDocuments: number;
@@ -82,13 +83,14 @@ export async function runIngestionPipeline(
 
     const mdxCount = documents.filter(d => d.type === 'mdx').length;
     const tsCount = documents.filter(d => d.type === 'typescript').length;
-    ingestionLogger.info(`Processing ${documents.length} document${documents.length === 1 ? "" : "s"} (${mdxCount} MDX, ${tsCount} TypeScript).`);
+    const pyCount = documents.filter(d => d.type === 'python').length;
+    ingestionLogger.info(`Processing ${documents.length} document${documents.length === 1 ? "" : "s"} (${mdxCount} MDX, ${tsCount} TypeScript, ${pyCount} Python).`);
 
     // Collect target state from all documents: checksum -> target location
     const targetState = new Map<string, TargetChunkLocation>();
     const allChecksums: string[] = [];
     const documentMap = new Map<string, GithubDocument>(); // filepath -> document
-    const documentChunksMap = new Map<string, { chunks: UnifiedChunk[]; parsedFile?: ParsedFile }>(); // filepath -> {chunks, parsedFile}
+    const documentChunksMap = new Map<string, { chunks: UnifiedChunk[]; parsedFile?: ParsedFile | ParsedPythonFile }>(); // filepath -> {chunks, parsedFile}
 
     for (const document of documents) {
         const filepath = document.relativePath || document.path;
@@ -121,7 +123,7 @@ export async function runIngestionPipeline(
 
             stats.processedDocuments += 1;
             documentChunksMap.set(filepath, {
-                chunks: preparedChunks.map(chunk => ({ sourceType: 'mdx' as const, chunk })),
+                chunks: preparedChunks.map(chunk => ({ sourceType: 'doc' as const, chunk })),
             });
 
             preparedChunks.forEach((chunk, index) => {
@@ -129,19 +131,23 @@ export async function runIngestionPipeline(
                 targetState.set(chunk.checksum, {
                     filepath,
                     chunkId: index,
-                    chunk: { sourceType: 'mdx', chunk },
-                    sourceType: 'mdx',
+                    chunk: { sourceType: 'doc', chunk },
+                    sourceType: 'doc',
                     githubUrl: links.githubUrl,
                 });
                 allChecksums.push(chunk.checksum);
             });
-        } else if (document.type === 'typescript') {
-            // Process TypeScript files
-            let parsedFile: ParsedFile;
+        } else if (document.type === 'typescript' || document.type === 'python') {
+            // Process TypeScript and Python files
+            let parsedFile: ParsedFile | ParsedPythonFile;
             try {
-                parsedFile = parseTypescriptFile(filepath, document.content, appConfig.parser);
+                if (document.type === 'typescript') {
+                    parsedFile = parseTypescriptFile(filepath, document.content, appConfig.parser);
+                } else {
+                    parsedFile = await parsePythonFile(filepath, document.content);
+                }
             } catch (error) {
-                fileLogger.error({ err: error }, "Failed to parse TypeScript file. Skipping.");
+                fileLogger.error({ err: error }, `Failed to parse ${document.type} file. Skipping.`);
                 stats.skippedDocuments += 1;
                 continue;
             }
@@ -158,8 +164,9 @@ export async function runIngestionPipeline(
             }
 
             stats.processedDocuments += 1;
+            const sourceType: 'code' = 'code';
             documentChunksMap.set(filepath, {
-                chunks: chunkedFile.chunks.map(chunk => ({ sourceType: 'typescript' as const, chunk })),
+                chunks: chunkedFile.chunks.map(chunk => ({ sourceType, chunk })),
                 parsedFile,
             });
 
@@ -168,8 +175,8 @@ export async function runIngestionPipeline(
                 targetState.set(chunk.checksum, {
                     filepath,
                     chunkId: index,
-                    chunk: { sourceType: 'typescript', chunk },
-                    sourceType: 'typescript',
+                    chunk: { sourceType, chunk },
+                    sourceType,
                     githubUrl: links.githubUrl,
                 });
                 allChecksums.push(chunk.checksum);
@@ -197,55 +204,131 @@ export async function runIngestionPipeline(
     // DB rows with that checksum. This set tracks which DB row IDs we've already decided
     // to reuse, so we don't accidentally assign the same DB row to two different targets.
     const alreadyAssignedDbIds = new Set<number>();
+    
+    // Track which target locations (filepath + chunkId + sourceType) have already been assigned
+    // to prevent multiple chunks from being moved to the same location
+    const assignedTargetLocations = new Set<string>();
+
+    /**
+     * Normalize source types to standardized values for comparison
+     * 'typescript', 'python' -> 'code'; 'mdx' -> 'doc'
+     */
+    function normalizeSourceType(sourceType?: string): 'doc' | 'code' | undefined {
+        if (!sourceType) return undefined;
+        if (sourceType === 'code' || sourceType === 'doc') return sourceType;
+        if (sourceType === 'typescript' || sourceType === 'python') return 'code';
+        if (sourceType === 'mdx') return 'doc';
+        return undefined;
+    }
 
     for (const [checksum, target] of targetState.entries()) {
+        const targetLocationKey = `${target.filepath}:${target.chunkId}:${target.sourceType}`;
+        
+        // Check if this target location is already assigned to another chunk
+        // This prevents duplicate key violations when multiple chunks with the same checksum
+        // try to move to the same target location (e.g., during sourceType migration)
+        if (assignedTargetLocations.has(targetLocationKey)) {
+            // This target location is already taken by another chunk.
+            // Skip this target - the existing chunk at this location will be updated via upsert
+            // if needed, or we'll rely on the chunk that was already moved there.
+            continue;
+        }
+        
         const dbChunksWithSameChecksum = existingByChecksum.get(checksum);
 
         if (dbChunksWithSameChecksum && dbChunksWithSameChecksum.length > 0) {
             // We found existing DB rows with matching content. Try to reuse one.
             
             // First, check if any DB row is already at the exact target location
+            // Exclude chunks in temporary __moving__ locations - these are stranded and need to be moved
+            // Normalize source types for comparison to handle legacy values
             const alreadyInPlace = dbChunksWithSameChecksum.find(
                 (dbChunk) => 
+                    !dbChunk.filepath.startsWith("__moving__") && // Exclude temporary locations
                     dbChunk.filepath === target.filepath && 
                     dbChunk.chunkId === target.chunkId &&
-                    dbChunk.sourceType === target.sourceType &&
+                    normalizeSourceType(dbChunk.sourceType) === normalizeSourceType(target.sourceType) &&
                     !alreadyAssignedDbIds.has(dbChunk.id)
             );
 
             if (alreadyInPlace) {
-                // This DB row is already where we want it - no changes needed
-                classifications.push({ type: "unchanged", existingId: alreadyInPlace.id });
-                alreadyAssignedDbIds.add(alreadyInPlace.id);
-            } else {
-                // No DB row at the target location. Find any unassigned DB row we can move there.
-                const reusableDbChunk = dbChunksWithSameChecksum.find(
-                    (dbChunk) => !alreadyAssignedDbIds.has(dbChunk.id)
-                );
-
-                if (reusableDbChunk) {
-                    // Move this existing DB row to the new location
+                // Check if sourceType needs updating (legacy -> normalized)
+                const needsSourceTypeUpdate = 
+                    normalizeSourceType(alreadyInPlace.sourceType) === normalizeSourceType(target.sourceType) &&
+                    alreadyInPlace.sourceType !== target.sourceType;
+                
+                if (needsSourceTypeUpdate) {
+                    // Same location and normalized type, but legacy value needs updating
                     classifications.push({
                         type: "moved",
-                        existingId: reusableDbChunk.id,
+                        existingId: alreadyInPlace.id,
                         newFilepath: target.filepath,
                         newChunkId: target.chunkId,
                         newSourceType: target.sourceType,
                     });
-                    alreadyAssignedDbIds.add(reusableDbChunk.id);
+                    alreadyAssignedDbIds.add(alreadyInPlace.id);
+                    assignedTargetLocations.add(targetLocationKey);
                 } else {
-                    // All DB rows with this checksum are already assigned to other targets.
-                    // We need to create a new row (and generate a new embedding).
-                    classifications.push({
-                        type: "new",
-                        chunk: target.chunk,
-                        filepath: target.filepath,
-                        chunkId: target.chunkId,
-                        sourceType: target.sourceType,
-                        githubUrl: target.githubUrl,
-                    });
+                    // This DB row is already where we want it - no changes needed
+                    classifications.push({ type: "unchanged", existingId: alreadyInPlace.id });
+                    alreadyAssignedDbIds.add(alreadyInPlace.id);
+                    assignedTargetLocations.add(targetLocationKey);
                 }
-            }
+                } else {
+                    // No DB row at the target location. Find any unassigned DB row we can move there.
+                    // Prefer chunks in temporary __moving__ locations (stranded chunks) to clean them up
+                    const reusableDbChunk = dbChunksWithSameChecksum.find(
+                        (dbChunk) => 
+                            !alreadyAssignedDbIds.has(dbChunk.id) &&
+                            dbChunk.filepath.startsWith("__moving__") // Prefer stranded chunks
+                    ) || dbChunksWithSameChecksum.find(
+                        (dbChunk) => !alreadyAssignedDbIds.has(dbChunk.id)
+                    );
+
+                    if (reusableDbChunk) {
+                        // Double-check that this target location isn't already assigned
+                        // (defensive check, should not happen due to earlier check)
+                        if (assignedTargetLocations.has(targetLocationKey)) {
+                            // This should not happen, but if it does, skip this target
+                            ingestionLogger.warn(
+                                `Target location ${targetLocationKey} already assigned, skipping move for chunk ${reusableDbChunk.id}`
+                            );
+                            continue;
+                        }
+                        
+                        // Move this existing DB row to the new location
+                        classifications.push({
+                            type: "moved",
+                            existingId: reusableDbChunk.id,
+                            newFilepath: target.filepath,
+                            newChunkId: target.chunkId,
+                            newSourceType: target.sourceType,
+                        });
+                        alreadyAssignedDbIds.add(reusableDbChunk.id);
+                        assignedTargetLocations.add(targetLocationKey);
+                    } else {
+                        // All DB rows with this checksum are already assigned to other targets.
+                        // We need to create a new row (and generate a new embedding).
+                        // But first, check if target location is already taken
+                        if (assignedTargetLocations.has(targetLocationKey)) {
+                            // Target location already taken, skip creating new chunk
+                            ingestionLogger.warn(
+                                `Target location ${targetLocationKey} already assigned, skipping new chunk creation`
+                            );
+                            continue;
+                        }
+                        
+                        classifications.push({
+                            type: "new",
+                            chunk: target.chunk,
+                            filepath: target.filepath,
+                            chunkId: target.chunkId,
+                            sourceType: target.sourceType,
+                            githubUrl: target.githubUrl,
+                        });
+                        assignedTargetLocations.add(targetLocationKey);
+                    }
+                }
         } else {
             // No existing DB row with this checksum - create new
             classifications.push({
@@ -256,11 +339,17 @@ export async function runIngestionPipeline(
                 sourceType: target.sourceType,
                 githubUrl: target.githubUrl,
             });
+            assignedTargetLocations.add(targetLocationKey);
         }
     }
 
     // Find orphaned chunks (checksums not in target state)
     const activeChecksums = new Set(targetState.keys());
+    
+    // Also find and mark stranded chunks in __moving__ locations for cleanup
+    // These are chunks that were left in temporary locations from previous failed moves
+    const strandedChunkIds = await store.findStrandedChunkIds(activeChecksums);
+    
     const orphanedIds = await store.findOrphanedChunkIds(activeChecksums);
 
     // Move chunks to new locations (two-phase to avoid conflicts)
@@ -281,11 +370,19 @@ export async function runIngestionPipeline(
         stats.movedChunks = movedChunks.length;
     }
 
-    // Delete orphaned chunks
-    if (orphanedIds.length > 0) {
-        ingestionLogger.info(`Deleting ${orphanedIds.length} orphaned chunk${orphanedIds.length === 1 ? "" : "s"}.`);
-        await store.deleteChunksByIds(orphanedIds);
-        stats.deletedChunks = orphanedIds.length;
+    // Delete orphaned chunks and stranded chunks
+    const chunksToDelete = [...new Set([...orphanedIds, ...strandedChunkIds])];
+    if (chunksToDelete.length > 0) {
+        const orphanedCount = orphanedIds.length;
+        const strandedCount = strandedChunkIds.length;
+        if (strandedCount > 0) {
+            ingestionLogger.info(`Deleting ${strandedCount} stranded chunk${strandedCount === 1 ? "" : "s"} in temporary locations.`);
+        }
+        if (orphanedCount > 0) {
+            ingestionLogger.info(`Deleting ${orphanedCount} orphaned chunk${orphanedCount === 1 ? "" : "s"}.`);
+        }
+        await store.deleteChunksByIds(chunksToDelete);
+        stats.deletedChunks = chunksToDelete.length;
     }
 
     // Embed and insert new chunks
@@ -299,7 +396,7 @@ export async function runIngestionPipeline(
     }
 
     // Group new chunks by filepath for context generation
-    const newChunksByFilepath = new Map<string, Array<{ chunk: UnifiedChunk; chunkId: number; sourceType: 'mdx' | 'typescript'; githubUrl?: string }>>();
+    const newChunksByFilepath = new Map<string, Array<{ chunk: UnifiedChunk; chunkId: number; sourceType: 'doc' | 'code'; githubUrl?: string }>>();
     for (const c of newChunks) {
         const existing = newChunksByFilepath.get(c.filepath) ?? [];
         existing.push({ chunk: c.chunk, chunkId: c.chunkId, sourceType: c.sourceType, githubUrl: c.githubUrl });
@@ -325,13 +422,14 @@ export async function runIngestionPipeline(
             `Generating context for ${chunks.length} new chunk${chunks.length === 1 ? "" : "s"}.`
         );
 
-        const sourceType = chunks[0]?.sourceType ?? document.type;
+        const sourceType: 'doc' | 'code' =
+            chunks[0]?.sourceType ?? (document.type === 'mdx' ? 'doc' : 'code');
         const fileEntry = documentChunksMap.get(filepath);
 
-        if (sourceType === 'mdx') {
+        if (sourceType === 'doc') {
             // MDX context generation
             const chunkContents = chunks.map((entry) => {
-                if (entry.chunk.sourceType === 'mdx') {
+                if (entry.chunk.sourceType === 'doc') {
                     return entry.chunk.chunk.chunkContent;
                 }
                 throw new Error(`Mismatched chunk type for MDX file ${filepath}`);
@@ -346,7 +444,7 @@ export async function runIngestionPipeline(
                     }
 
                     chunks.forEach((entry, index) => {
-                        if (entry.chunk.sourceType === 'mdx') {
+                        if (entry.chunk.sourceType === 'doc') {
                             const contextHeader = contexts[index]?.trim() ?? "";
                             const contextualText = `${contextHeader}---${entry.chunk.chunk.chunkContent}`;
                             const links = resolveSourceLinks(filepath, entry.chunk.chunk.chunkTitle, appConfig, document.sourceUrl);
@@ -357,7 +455,7 @@ export async function runIngestionPipeline(
                                 checksum: entry.chunk.chunk.checksum,
                                 content: entry.chunk.chunk.chunkContent,
                                 contextualText,
-                                sourceType: 'mdx',
+                                sourceType: 'doc',
                                 githubUrl: links.githubUrl,
                             });
                         }
@@ -372,8 +470,8 @@ export async function runIngestionPipeline(
                 });
 
             contextTasks.push(contextTask);
-        } else if (sourceType === 'typescript') {
-            // TypeScript entity context generation
+        } else if (sourceType === 'code') {
+            // Code entity context generation (any language)
             const parsedFile = fileEntry?.parsedFile;
             if (!parsedFile) {
                 fileLogger.warn(`Parsed file entry for ${filepath} not found. Skipping context generation.`);
@@ -381,31 +479,32 @@ export async function runIngestionPipeline(
             }
 
             const entityInputs: EntityContextInput[] = chunks.map((entry) => {
-                if (entry.chunk.sourceType === 'typescript') {
-                    const tsChunk = entry.chunk.chunk;
-                    // Find the original entity from parsedFile.entities using qualifiedName
-                    const originalEntity = parsedFile.entities.find(
-                        e => e.qualifiedName === tsChunk.qualifiedName.split('_part')[0] // Handle split chunk titles
+                if (entry.chunk.sourceType === 'code') {
+                    const codeChunk = entry.chunk.chunk;
+                    // Find the original entity from parsedFile.entities using qualifiedName (handle split chunk titles)
+                    const baseQualifiedName = codeChunk.qualifiedName.split('_part')[0];
+                    const originalEntity = (parsedFile as any).entities.find(
+                        (e: { qualifiedName: string }) => e.qualifiedName === baseQualifiedName
                     );
 
                     return {
-                        entityCode: tsChunk.content,
-                        entityType: tsChunk.entityType,
-                        entityName: originalEntity?.name ?? tsChunk.qualifiedName,
-                        qualifiedName: originalEntity?.qualifiedName ?? tsChunk.qualifiedName,
+                        entityCode: codeChunk.content,
+                        entityType: codeChunk.entityType,
+                        entityName: (originalEntity as any)?.name ?? codeChunk.qualifiedName,
+                        qualifiedName: (originalEntity as any)?.qualifiedName ?? codeChunk.qualifiedName,
                         fullFileContent: document.content,
-                        parentContext: originalEntity?.parentContext,
-                        jsDoc: originalEntity?.jsDoc,
-                        imports: parsedFile.imports,
-                        parameters: originalEntity?.parameters,
-                        returnType: originalEntity?.returnType,
+                        parentContext: (originalEntity as any)?.parentContext,
+                        jsDoc: (originalEntity as any)?.jsDoc ?? (originalEntity as any)?.docstring,
+                        imports: (parsedFile as any).imports,
+                        parameters: (originalEntity as any)?.parameters,
+                        returnType: (originalEntity as any)?.returnType,
                     };
                 }
-                throw new Error(`Mismatched chunk type for TypeScript file ${filepath}`);
+                throw new Error(`Mismatched chunk type for code file ${filepath}`);
             });
 
             const contextTask = llm.chat
-                .generateEntityContexts(entityInputs, document.content)
+                .generateEntityContexts(entityInputs, document.content, filepath)
                 .then((contexts) => {
                     if (contexts.length !== chunks.length) {
                         throw new Error(
@@ -414,7 +513,7 @@ export async function runIngestionPipeline(
                     }
 
                     chunks.forEach((entry, index) => {
-                        if (entry.chunk.sourceType === 'typescript') {
+                        if (entry.chunk.sourceType === 'code') {
                             const contextHeader = contexts[index]?.trim() ?? "";
                             const contextualText = contextHeader
                                 ? `${contextHeader}\n---\n${entry.chunk.chunk.content}`
@@ -426,7 +525,7 @@ export async function runIngestionPipeline(
                                 checksum: entry.chunk.chunk.checksum,
                                 content: entry.chunk.chunk.content,
                                 contextualText,
-                                sourceType: 'typescript',
+                                sourceType: 'code',
                                 entityType: entry.chunk.chunk.entityType,
                                 startLine: entry.chunk.chunk.startLine,
                                 endLine: entry.chunk.chunk.endLine,
@@ -462,9 +561,15 @@ export async function runIngestionPipeline(
     }
 
     const upsertPayload: DocumentChunk[] = pendingEmbeddings.map((entry, index) => {
-        const links = entry.githubUrl 
-            ? { githubUrl: entry.githubUrl, docsUrl: undefined, finalUrl: entry.githubUrl }
-            : resolveSourceLinks(entry.filepath, entry.chunkTitle, appConfig, documentMap.get(entry.filepath)?.sourceUrl);
+        const document = documentMap.get(entry.filepath);
+        const sourceUrl = document?.sourceUrl ?? entry.githubUrl;
+        const links = resolveSourceLinks(
+            entry.filepath,
+            entry.chunkTitle,
+            appConfig,
+            sourceUrl
+        );
+
         return {
             content: entry.content,
             contextualText: entry.contextualText,

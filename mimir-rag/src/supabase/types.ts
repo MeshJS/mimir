@@ -9,7 +9,7 @@ export interface DocumentChunk {
     githubUrl?: string;
     docsUrl?: string;
     finalUrl?: string;
-    sourceType?: 'mdx' | 'typescript';
+    sourceType?: 'doc' | 'code' | 'mdx' | 'typescript' | 'python';
     entityType?: string;
     startLine?: number;
     endLine?: number;

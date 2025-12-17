@@ -22,7 +22,6 @@
     "tsx": "^4.20.6"
   },
   "dependencies": {
-    "typescript": "^5.9.3",
     "@ai-sdk/anthropic": "^2.0.50",
     "@ai-sdk/google": "^2.0.44",
     "@ai-sdk/mistral": "^2.0.25",
@@ -36,6 +35,9 @@
     "p-limit": "^7.2.0",
     "p-retry": "^7.1.0",
     "pino": "^10.1.0",
-    "tiktoken": "^1.0.22"
+    "tiktoken": "^1.0.22",
+    "tree-sitter-python": "^0.25.0",
+    "typescript": "^5.9.3",
+    "web-tree-sitter": "^0.26.3"
   }
 }

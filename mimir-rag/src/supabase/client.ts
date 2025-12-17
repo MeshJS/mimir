@@ -29,7 +29,8 @@ export interface ExistingChunkInfo {
     checksum: string;
     filepath: string;
     chunkId: number;
-    sourceType?: 'mdx' | 'typescript';
+    /** High-level source classification, plus legacy values for backward compatibility. */
+    sourceType?: 'doc' | 'code' | 'mdx' | 'typescript';
 }
 
 export class SupabaseVectorStore {
@@ -116,7 +117,7 @@ export class SupabaseVectorStore {
                     checksum: row.checksum,
                     filepath: row.filepath,
                     chunkId: row.chunk_id,
-                    sourceType: row.source_type as 'mdx' | 'typescript' | undefined,
+                    sourceType: row.source_type as 'doc' | 'code' | 'mdx' | 'typescript' | undefined,
                 };
                 const existing = map.get(row.checksum);
                 if (existing) {
@@ -236,35 +237,99 @@ export class SupabaseVectorStore {
         this.logger.info(`Reordered ${updates.length} chunk${updates.length === 1 ? "" : "s"}.`);
     }
 
-    async moveChunksAtomic(moves: Array<{ id: number; filepath: string; chunkId: number; sourceType?: 'mdx' | 'typescript' }>): Promise<void> {
+    async moveChunksAtomic(moves: Array<{ id: number; filepath: string; chunkId: number; sourceType?: 'doc' | 'code' | 'mdx' | 'typescript' }>): Promise<void> {
         if (moves.length === 0) {
             return;
         }
 
-        // Phase 1: Move all chunks to temporary filepaths to avoid unique constraint conflicts
-        for (const move of moves) {
-            const tempFilepath = `__moving__${move.id}`;
-            const updateData: any = { filepath: tempFilepath, chunk_id: move.chunkId };
-            if (move.sourceType) {
-                updateData.source_type = move.sourceType;
-            }
-            const { error } = await this.client
-                .from(this.config.table)
-                .update(updateData)
-                .eq("id", move.id);
+        const moveIds = moves.map(m => m.id);
 
-            if (error) {
-                this.logger.error(`Failed to move chunk ${move.id} to temp filepath: ${error.message}`);
-                throw new Error(`Failed to move chunk to temp filepath: ${error.message}`);
-            }
+        // Phase 1: Move all chunks to temporary filepaths to avoid unique constraint conflicts
+        // Each chunk needs a unique temp filepath, so we must update individually
+        // But we can process them in parallel batches for better performance
+        const BATCH_SIZE = 50;
+        for (let i = 0; i < moves.length; i += BATCH_SIZE) {
+            const batch = moves.slice(i, i + BATCH_SIZE);
+            await Promise.all(
+                batch.map(async (move) => {
+                    const tempFilepath = `__moving__${move.id}`;
+                    const updateData: any = { filepath: tempFilepath, chunk_id: move.chunkId };
+                    if (move.sourceType) {
+                        updateData.source_type = move.sourceType;
+                    }
+                    const { error } = await this.client
+                        .from(this.config.table)
+                        .update(updateData)
+                        .eq("id", move.id);
+
+                    if (error) {
+                        this.logger.error(`Failed to move chunk ${move.id} to temp filepath: ${error.message}`);
+                        throw new Error(`Failed to move chunk to temp filepath: ${error.message}`);
+                    }
+                })
+            );
         }
 
         // Phase 2: Move all chunks to their final filepaths
+        // IMPORTANT: Only one chunk can occupy each (filepath, chunkId) combination due to unique constraint.
+        // If multiple chunks target the same location, only move the first one.
+        // The pipeline should prevent this, but we handle it defensively here.
+        const movesByTarget = new Map<string, typeof moves>();
         for (const move of moves) {
-            const updateData: any = { filepath: move.filepath };
+            // Key includes sourceType to allow same (filepath, chunkId) with different sourceType
+            // But the unique constraint is only on (filepath, chunkId), so we need to deduplicate
+            const uniqueKey = `${move.filepath}:${move.chunkId}`;
+            if (!movesByTarget.has(uniqueKey)) {
+                movesByTarget.set(uniqueKey, []);
+            }
+            movesByTarget.get(uniqueKey)!.push(move);
+        }
+
+        let successfullyMoved = 0;
+        const strandedChunkIds: number[] = [];
+
+        for (const [uniqueKey, targetMoves] of movesByTarget.entries()) {
+            // If multiple chunks target the same (filepath, chunkId), only move the first one
+            // This should not happen if the pipeline logic is correct, but we handle it defensively
+            if (targetMoves.length > 1) {
+                this.logger.warn(
+                    `Multiple chunks (${targetMoves.length}) targeting same location ${uniqueKey}. Only moving first chunk.`
+                );
+                // Track stranded chunks (those that won't be moved)
+                for (let i = 1; i < targetMoves.length; i++) {
+                    strandedChunkIds.push(targetMoves[i].id);
+                }
+            }
+            
+            const move = targetMoves[0]; // Only move the first one
+            
+            // Check if target location is already occupied by a different chunk
+            const { data: existingChunk } = await this.client
+                .from(this.config.table)
+                .select("id")
+                .eq("filepath", move.filepath)
+                .eq("chunk_id", move.chunkId)
+                .maybeSingle();
+            
+            if (existingChunk && existingChunk.id !== move.id) {
+                // Target location is already occupied by a different chunk
+                // This shouldn't happen if pipeline logic is correct, but handle defensively
+                this.logger.warn(
+                    `Target location ${uniqueKey} already occupied by chunk ${existingChunk.id}. Skipping move for chunk ${move.id}.`
+                );
+                // Mark this chunk as stranded since it won't be moved
+                strandedChunkIds.push(move.id);
+                continue;
+            }
+            
+            const updateData: any = { 
+                filepath: move.filepath,
+                chunk_id: move.chunkId 
+            };
             if (move.sourceType) {
                 updateData.source_type = move.sourceType;
             }
+
             const { error } = await this.client
                 .from(this.config.table)
                 .update(updateData)
@@ -274,9 +339,18 @@ export class SupabaseVectorStore {
                 this.logger.error(`Failed to move chunk ${move.id} to final filepath: ${error.message}`);
                 throw new Error(`Failed to move chunk to final filepath: ${error.message}`);
             }
+            
+            successfullyMoved++;
         }
 
-        this.logger.info(`Moved ${moves.length} chunk${moves.length === 1 ? "" : "s"} to new locations.`);
+        // Log the actual number moved, and warn about stranded chunks
+        if (strandedChunkIds.length > 0) {
+            this.logger.warn(
+                `${strandedChunkIds.length} chunk${strandedChunkIds.length === 1 ? "" : "s"} left in temporary locations due to duplicate target locations. This indicates a bug in the pipeline logic.`
+            );
+        }
+
+        this.logger.info(`Moved ${successfullyMoved} of ${moves.length} chunk${moves.length === 1 ? "" : "s"} to new locations.`);
     }
 
     async findOrphanedChunkIds(activeChecksums: Set<string>): Promise<number[]> {
@@ -314,6 +388,51 @@ export class SupabaseVectorStore {
         return orphanedIds;
     }
 
+    /**
+     * Find chunks that are stranded in temporary __moving__ locations.
+     * These are chunks that were left in temporary locations from previous failed moves.
+     * They should be cleaned up if their target location is already occupied by another chunk
+     * with the same checksum (duplicate), or if they're no longer needed.
+     */
+    async findStrandedChunkIds(activeChecksums: Set<string>): Promise<number[]> {
+        // Find all chunks in temporary __moving__ locations
+        const { data, error } = await this.client
+            .from(this.config.table)
+            .select("id, checksum, filepath")
+            .like("filepath", "__moving__%");
+
+        if (error) {
+            this.logger.error(`Failed to fetch stranded chunks: ${error.message}`);
+            throw new Error(`Failed to fetch stranded chunks: ${error.message}`);
+        }
+
+        if (!data || data.length === 0) {
+            return [];
+        }
+
+        // For each stranded chunk, check if its checksum is still active
+        // If not, it should be deleted. If yes, it will be handled by the move logic.
+        // But if the target location is already occupied, it will remain stranded.
+        // We'll delete stranded chunks that have active checksums but couldn't be moved
+        // (they're duplicates of chunks already at their target locations)
+        const strandedIds: number[] = [];
+        
+        for (const chunk of data) {
+            // If the checksum is not active, the chunk will be deleted as orphaned
+            // If the checksum is active, the chunk should be moved to its target location
+            // But if the move fails (target occupied), it remains stranded
+            // We'll let the move logic handle it, and if it remains stranded after moves,
+            // we'll clean it up on the next run
+            // For now, we'll be conservative and only delete stranded chunks whose
+            // checksums are no longer active
+            if (!activeChecksums.has(chunk.checksum)) {
+                strandedIds.push(chunk.id);
+            }
+        }
+
+        return strandedIds;
+    }
+
     async matchDocuments(
         embedding: number[],
         options?: { matchCount?: number; similarityThreshold?: number }
@@ -343,7 +462,7 @@ export class SupabaseVectorStore {
             githubUrl: row.github_url ?? undefined,
             docsUrl: row.docs_url ?? undefined,
             finalUrl: row.final_url ?? undefined,
-            sourceType: (row.source_type as 'mdx' | 'typescript' | undefined) ?? 'mdx',
+            sourceType: (row.source_type as 'doc' | 'code' | 'mdx' | 'typescript' | undefined) ?? 'mdx',
             entityType: row.entity_type ?? undefined,
             startLine: row.start_line ?? undefined,
             endLine: row.end_line ?? undefined,
@@ -378,7 +497,7 @@ export class SupabaseVectorStore {
             githubUrl: row.github_url ?? undefined,
             docsUrl: row.docs_url ?? undefined,
             finalUrl: row.final_url ?? undefined,
-            sourceType: (row.source_type as 'mdx' | 'typescript' | undefined) ?? 'mdx',
+            sourceType: (row.source_type as 'doc' | 'code' | 'mdx' | 'typescript' | undefined) ?? 'mdx',
             entityType: row.entity_type ?? undefined,
             startLine: row.start_line ?? undefined,
             endLine: row.end_line ?? undefined,
