@@ -6,6 +6,7 @@ import { downloadGithubFiles, downloadGithubMdxFiles, GithubMdxDocument, GithubD
 import { chunkMdxFile, enforceChunkTokenLimit, MdxChunk } from "./chunkers/chunker";
 import { parseTypescriptFile, ParsedFile } from "./parsers/astParser";
 import { parsePythonFile, ParsedPythonFile } from "./parsers/pythonAstParser";
+import { parseRustFile, ParsedRustFile } from "./parsers/rustAstParser";
 import { chunkParsedFile, EntityChunk } from "./chunkers/entityChunker";
 import type { SupabaseVectorStore } from "../supabase/client";
 import type { DocumentChunk } from "../supabase/types";
@@ -84,13 +85,14 @@ export async function runIngestionPipeline(
     const mdxCount = documents.filter(d => d.type === 'mdx').length;
     const tsCount = documents.filter(d => d.type === 'typescript').length;
     const pyCount = documents.filter(d => d.type === 'python').length;
-    ingestionLogger.info(`Processing ${documents.length} document${documents.length === 1 ? "" : "s"} (${mdxCount} MDX, ${tsCount} TypeScript, ${pyCount} Python).`);
+    const rustCount = documents.filter(d => d.type === 'rust').length;
+    ingestionLogger.info(`Processing ${documents.length} document${documents.length === 1 ? "" : "s"} (${mdxCount} MDX, ${tsCount} TypeScript, ${pyCount} Python, ${rustCount} Rust).`);
 
     // Collect target state from all documents: checksum -> target location
     const targetState = new Map<string, TargetChunkLocation>();
     const allChecksums: string[] = [];
     const documentMap = new Map<string, GithubDocument>(); // filepath -> document
-    const documentChunksMap = new Map<string, { chunks: UnifiedChunk[]; parsedFile?: ParsedFile | ParsedPythonFile }>(); // filepath -> {chunks, parsedFile}
+    const documentChunksMap = new Map<string, { chunks: UnifiedChunk[]; parsedFile?: ParsedFile | ParsedPythonFile | ParsedRustFile }>(); // filepath -> {chunks, parsedFile}
 
     for (const document of documents) {
         const filepath = document.relativePath || document.path;
@@ -137,14 +139,16 @@ export async function runIngestionPipeline(
                 });
                 allChecksums.push(chunk.checksum);
             });
-        } else if (document.type === 'typescript' || document.type === 'python') {
-            // Process TypeScript and Python files
-            let parsedFile: ParsedFile | ParsedPythonFile;
+        } else if (document.type === 'typescript' || document.type === 'python' || document.type === 'rust') {
+            // Process TypeScript, Python, and Rust files
+            let parsedFile: ParsedFile | ParsedPythonFile | ParsedRustFile;
             try {
                 if (document.type === 'typescript') {
                     parsedFile = parseTypescriptFile(filepath, document.content, appConfig.parser);
-                } else {
+                } else if (document.type === 'python') {
                     parsedFile = await parsePythonFile(filepath, document.content);
+                } else {
+                    parsedFile = await parseRustFile(filepath, document.content);
                 }
             } catch (error) {
                 fileLogger.error({ err: error }, `Failed to parse ${document.type} file. Skipping.`);
@@ -211,12 +215,12 @@ export async function runIngestionPipeline(
 
     /**
      * Normalize source types to standardized values for comparison
-     * 'typescript', 'python' -> 'code'; 'mdx' -> 'doc'
+     * 'typescript', 'python', 'rust' -> 'code'; 'mdx' -> 'doc'
      */
     function normalizeSourceType(sourceType?: string): 'doc' | 'code' | undefined {
         if (!sourceType) return undefined;
         if (sourceType === 'code' || sourceType === 'doc') return sourceType;
-        if (sourceType === 'typescript' || sourceType === 'python') return 'code';
+        if (sourceType === 'typescript' || sourceType === 'python' || sourceType === 'rust') return 'code';
         if (sourceType === 'mdx') return 'doc';
         return undefined;
     }

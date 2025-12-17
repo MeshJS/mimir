@@ -1,12 +1,13 @@
 import { Buffer } from "node:buffer";
 import type { TypeScriptEntity, EntityType, ParsedFile } from "../parsers/astParser";
 import type { ParsedPythonFile, PythonEntity } from "../parsers/pythonAstParser";
+import type { ParsedRustFile, RustEntity } from "../parsers/rustAstParser";
 import { calculateChecksum } from "../../utils/calculateChecksum";
 import { countTokens, getEncoder } from "../../utils/tokenEncoder";
 
-// Unified entity type that supports both TypeScript and Python entities
-type UnifiedEntity = TypeScriptEntity | PythonEntity;
-type UnifiedParsedFile = ParsedFile | ParsedPythonFile;
+// Unified entity type that supports TypeScript, Python, and Rust entities
+type UnifiedEntity = TypeScriptEntity | PythonEntity | RustEntity;
+type UnifiedParsedFile = ParsedFile | ParsedPythonFile | ParsedRustFile;
 
 export interface EntityChunk {
     /** Qualified name of the entity (e.g., "ClassName.methodName") */
@@ -53,7 +54,7 @@ export interface ChunkedFile {
 
 /**
  * Process a parsed file and create chunks with token limits enforced
- * Supports both TypeScript and Python parsed files
+ * Supports TypeScript, Python, and Rust parsed files
  */
 export function chunkParsedFile(parsed: UnifiedParsedFile, options: ChunkerOptions): ChunkedFile {
     const chunks: EntityChunk[] = [];
@@ -73,7 +74,7 @@ export function chunkParsedFile(parsed: UnifiedParsedFile, options: ChunkerOptio
 
 /**
  * Create chunks from a single entity, splitting if necessary
- * Supports both TypeScript and Python entities
+ * Supports TypeScript, Python, and Rust entities
  */
 function createEntityChunks(entity: UnifiedEntity, options: ChunkerOptions): EntityChunk[] {
     const tokens = countTokens(entity.code, options.model);
@@ -91,24 +92,44 @@ function createEntityChunks(entity: UnifiedEntity, options: ChunkerOptions): Ent
  * Type guard to check if entity is a Python entity
  */
 function isPythonEntity(entity: UnifiedEntity): entity is PythonEntity {
-    return 'docstring' in entity && !('jsDoc' in entity);
+    return 'docstring' in entity && !('jsDoc' in entity) && 'entityType' in entity && 
+           (entity.entityType === 'function' || entity.entityType === 'class' || entity.entityType === 'method' || entity.entityType === 'variable' || entity.entityType === 'module');
 }
 
 /**
- * Convert an entity (TypeScript or Python) to an EntityChunk
- * Handles both jsDoc (TypeScript) and docstring (Python) properties
+ * Type guard to check if entity is a Rust entity
+ */
+function isRustEntity(entity: UnifiedEntity): entity is RustEntity {
+    return 'docstring' in entity && !('jsDoc' in entity) && 'entityType' in entity && 
+           (entity.entityType === 'struct' || entity.entityType === 'impl' || entity.entityType === 'trait' || 
+            entity.entityType === 'enum' || entity.entityType === 'mod' || entity.entityType === 'type_alias' ||
+            entity.entityType === 'const' || entity.entityType === 'static');
+}
+
+/**
+ * Convert an entity (TypeScript, Python, or Rust) to an EntityChunk
+ * Handles jsDoc (TypeScript) and docstring (Python/Rust) properties
  */
 function entityToChunk(entity: UnifiedEntity, partNumber?: number, totalParts?: number): EntityChunk {
-    // Extract docstring from either jsDoc (TypeScript) or docstring (Python)
-    const docstring = isPythonEntity(entity) 
+    // Extract docstring from either jsDoc (TypeScript) or docstring (Python/Rust)
+    const docstring = isPythonEntity(entity) || isRustEntity(entity)
         ? entity.docstring 
         : (entity as TypeScriptEntity).jsDoc;
     
-    // Map Python entity types to TypeScript entity types
-    // Python "module" maps to a generic type, but we'll allow it
-    const entityType = entity.entityType === 'module' 
-        ? 'variable' as EntityType  // Map module to variable as fallback
-        : entity.entityType as EntityType;
+    // Map entity types to TypeScript entity types
+    // Python "module" and Rust "mod" map to a generic type
+    let entityType: EntityType;
+    if (entity.entityType === 'module' || entity.entityType === 'mod') {
+        entityType = 'variable' as EntityType; // Map module/mod to variable as fallback
+    } else if (entity.entityType === 'struct' || entity.entityType === 'trait' || entity.entityType === 'impl') {
+        entityType = 'class' as EntityType; // Map Rust struct/trait/impl to class
+    } else if (entity.entityType === 'type_alias') {
+        entityType = 'type' as EntityType; // Map Rust type_alias to type
+    } else if (entity.entityType === 'const' || entity.entityType === 'static') {
+        entityType = 'variable' as EntityType; // Map Rust const/static to variable
+    } else {
+        entityType = entity.entityType as EntityType;
+    }
     
     return {
         qualifiedName: entity.qualifiedName,
@@ -127,7 +148,7 @@ function entityToChunk(entity: UnifiedEntity, partNumber?: number, totalParts?: 
 
 /**
  * Split an oversized entity into multiple chunks
- * Supports both TypeScript and Python entities
+ * Supports TypeScript, Python, and Rust entities
  */
 function splitEntity(entity: UnifiedEntity, options: ChunkerOptions): EntityChunk[] {
     const { tokenLimit, model } = options;
@@ -220,9 +241,18 @@ function splitEntity(entity: UnifiedEntity, options: ChunkerOptions): EntityChun
     }
 
     // Create chunks for each part with correct line ranges
-    const entityType = entity.entityType === 'module' 
-        ? 'variable' as EntityType  // Map module to variable as fallback
-        : entity.entityType as EntityType;
+    let entityType: EntityType;
+    if (entity.entityType === 'module' || entity.entityType === 'mod') {
+        entityType = 'variable' as EntityType; // Map module/mod to variable as fallback
+    } else if (entity.entityType === 'struct' || entity.entityType === 'trait' || entity.entityType === 'impl') {
+        entityType = 'class' as EntityType; // Map Rust struct/trait/impl to class
+    } else if (entity.entityType === 'type_alias') {
+        entityType = 'type' as EntityType; // Map Rust type_alias to type
+    } else if (entity.entityType === 'const' || entity.entityType === 'static') {
+        entityType = 'variable' as EntityType; // Map Rust const/static to variable
+    } else {
+        entityType = entity.entityType as EntityType;
+    }
     
     return parts.map((part, index) => {
         // Calculate actual line numbers (1-based) for this part
@@ -240,7 +270,7 @@ function splitEntity(entity: UnifiedEntity, options: ChunkerOptions): EntityChun
             startLine: partStartLine,
             endLine: partEndLine,
             isExported: entity.isExported,
-            jsDoc: index === 0 ? (isPythonEntity(entity) ? entity.docstring : (entity as TypeScriptEntity).jsDoc) : undefined, // Only include docstring in first part
+            jsDoc: index === 0 ? (isPythonEntity(entity) || isRustEntity(entity) ? entity.docstring : (entity as TypeScriptEntity).jsDoc) : undefined, // Only include docstring in first part
             partNumber: index + 1,
             totalParts: parts.length,
         };
@@ -249,7 +279,7 @@ function splitEntity(entity: UnifiedEntity, options: ChunkerOptions): EntityChun
 
 /**
  * Create a signature header for split entities to provide context
- * Supports both TypeScript and Python entities
+ * Supports TypeScript, Python, and Rust entities
  */
 function createSignatureHeader(entity: UnifiedEntity): string | null {
     const lines = entity.code.split("\n");
