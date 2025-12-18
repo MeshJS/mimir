@@ -123,14 +123,32 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
             extractVariables: getEnvBoolean("MIMIR_EXTRACT_VARIABLES", false),
             extractMethods: getEnvBoolean("MIMIR_EXTRACT_METHODS", true),
             excludePatterns: [
-                // Default Python test patterns
+                // TypeScript/JavaScript test patterns
+                "*.test.ts",
+                "*.test.tsx",
+                "*.spec.ts",
+                "*.spec.tsx",
+                "*.test.js",
+                "*.test.jsx",
+                "*.spec.js",
+                "*.spec.jsx",
+                "test/",
+                "__tests__/",
+                "tests/",
+                // Python test patterns
                 "test_*.py",
                 "*_test.py",
                 "*_tests.py",
                 "tests/",
                 "test/",
                 "__tests__/",
-                // User-defined patterns from env
+                // Rust test patterns
+                "*_test.rs",
+                "*_tests.rs",
+                "tests/",
+                "test/",
+                "benches/",
+                // User-defined patterns from env (appended to allow overrides)
                 ...(getEnv("MIMIR_EXCLUDE_PATTERNS", false)?.split(",").map(p => p.trim()).filter(Boolean) ?? []),
             ],
             includeDirectories: getEnv("MIMIR_GITHUB_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
