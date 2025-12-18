@@ -55,10 +55,17 @@ export function buildEntityContextPrompt(entity: EntityContextInput, filepath?: 
     return parts.join("\n");
 }
 
-export function buildBatchContextPrompt(entities: EntityContextInput[], fileContent: string, filepath?: string): string {
+export function buildBatchContextPrompt(
+    entities: EntityContextInput[], 
+    fileContent: string, 
+    filepath?: string,
+    entityLineRanges?: Array<{ startLine: number; endLine: number }>
+): string {
     const language = getLanguageFromFilepath(filepath);
     const entitySections = entities.map((entity, index) => {
-        return `--- Entity ${index + 1} ---\n${buildEntityContextPrompt(entity, filepath)}`;
+        const lineRange = entityLineRanges?.[index];
+        const lineInfo = lineRange ? ` (lines ${lineRange.startLine}-${lineRange.endLine})` : "";
+        return `--- Entity ${index + 1}${lineInfo} ---\n${buildEntityContextPrompt(entity, filepath)}`;
     }).join("\n\n");
 
     return `Generate context descriptions for the following ${entities.length} code entities from the same file.

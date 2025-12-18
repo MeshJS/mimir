@@ -1,6 +1,6 @@
 import type { EmbeddingModelConfig } from "../config/types";
 
-const DEFAULT_EMBEDDING_TOKEN_LIMIT = 8_000;
+const DEFAULT_EMBEDDING_TOKEN_LIMIT = 8_192;
 
 const EMBEDDING_MODEL_TOKEN_LIMITS: Record<string, number> = {
     "text-embedding-3-large": 8_192,

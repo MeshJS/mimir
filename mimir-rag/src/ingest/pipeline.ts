@@ -545,8 +545,17 @@ export async function runIngestionPipeline(
                 throw new Error(`Mismatched chunk type for code file ${filepath}`);
             });
 
+            // Extract line ranges for each entity chunk (for TypeScript, Python, and Rust)
+            // These are stored in the database and used for tracking
+            const entityLineRanges = chunks
+                .filter(entry => entry.chunk.sourceType === 'code')
+                .map(entry => ({
+                    startLine: entry.chunk.chunk.startLine ?? 1,
+                    endLine: entry.chunk.chunk.endLine ?? 1,
+                }));
+
             const contextTask = llm.chat
-                .generateEntityContexts(entityInputs, document.content, filepath)
+                .generateEntityContexts(entityInputs, document.content, filepath, entityLineRanges)
                 .then((contexts) => {
                     if (contexts.length !== chunks.length) {
                         throw new Error(

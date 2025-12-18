@@ -100,8 +100,10 @@ export async function parseRustFile(
 
     const entities: RustEntity[] = [];
 
-    // Add a module-level entity for overall context
-    if (content.trim().length > 0) {
+    // Only add module-level entity if there are no individual entities
+    // This prevents duplication and poor chunking when individual functions/structs/traits exist
+    // The module entity is only useful when the file contains only module-level code
+    if (content.trim().length > 0 && astResult.entities.length === 0) {
         // Calculate endLine correctly: count newlines and handle trailing newline
         const newlineCount = (content.match(/\n/g) || []).length;
         const endLine = content.endsWith("\n") ? newlineCount : newlineCount + 1;

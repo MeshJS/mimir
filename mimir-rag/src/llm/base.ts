@@ -178,7 +178,12 @@ export abstract class BaseChatProvider implements ChatProvider {
         return response.map((result) => result.answer.trim());
     }
 
-    async generateEntityContexts(entities: EntityContextInput[], fileContent: string, filepath?: string): Promise<string[]> {
+    async generateEntityContexts(
+        entities: EntityContextInput[], 
+        fileContent: string, 
+        filepath?: string,
+        entityLineRanges?: Array<{ startLine: number; endLine: number }>
+    ): Promise<string[]> {
         if (entities.length === 0) {
             return [];
         }
@@ -194,7 +199,14 @@ export abstract class BaseChatProvider implements ChatProvider {
             batches.map((batch, batchIndex) =>
                 limit(async () => {
                     const systemPrompt = getEntityContextSystemPrompt();
-                    const userPrompt = buildBatchContextPrompt(batch, fileContent, filepath);
+                    
+                    // Extract line ranges for this batch
+                    const batchStartIndex = batchIndex * BATCH_SIZE;
+                    const batchLineRanges = entityLineRanges 
+                        ? entityLineRanges.slice(batchStartIndex, batchStartIndex + batch.length)
+                        : undefined;
+                    
+                    const userPrompt = buildBatchContextPrompt(batch, fileContent, filepath, batchLineRanges);
 
                     const tokens = this.estimateEntityContextTokens(systemPrompt, userPrompt);
                     const response = await this.scheduleWithRateLimits(

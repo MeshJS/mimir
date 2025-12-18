@@ -57,7 +57,7 @@ export interface ChatProvider {
     generateAnswer(options: GenerateAnswerOptions & { stream?: false }): Promise<StructuredAnswerResult>;
     generateAnswer(options: GenerateAnswerOptions & { stream: true }): Promise<AsyncIterable<StructuredAnswerResult>>;
     generateFileChunkContexts(chunks: string[], fileContent: string): Promise<string[]>;
-    generateEntityContexts(entities: EntityContextInput[], fileContent: string, filepath?: string): Promise<string[]>;
+    generateEntityContexts(entities: EntityContextInput[], fileContent: string, filepath?: string, entityLineRanges?: Array<{ startLine: number; endLine: number }>): Promise<string[]>;
 }
 
 export interface LLMClientBundle {

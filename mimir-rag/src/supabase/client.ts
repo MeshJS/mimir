@@ -417,7 +417,7 @@ export class SupabaseVectorStore {
                     }
                 } else {
                     // No repository scope - backward compatible behavior
-                    orphanedIds.push(row.id);
+                orphanedIds.push(row.id);
                 }
             }
         }
@@ -486,7 +486,7 @@ export class SupabaseVectorStore {
                     }
                 } else {
                     // No repository scope - backward compatible behavior
-                    strandedIds.push(chunk.id);
+                strandedIds.push(chunk.id);
                 }
             }
         }
