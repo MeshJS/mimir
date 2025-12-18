@@ -75,7 +75,7 @@ ${fileContent}
 
 ${entitySections}
 
-For each entity, please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. The context should explain what the code entity does, its purpose, and where it fits within the document. Answer only with the succinct context and nothing else. Format your response as a numbered list matching the entity numbers above.`;
+For each entity, please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else. Format your response as a numbered list matching the entity numbers above.`;
 }
 
 
