@@ -2,7 +2,7 @@ import { calculateChecksum } from "../../utils/calculateChecksum";
 import { Parser, Language, Node } from "web-tree-sitter";
 import path from "node:path";
 
-export type RustEntityType = "function" | "struct" | "impl" | "trait" | "enum" | "mod" | "type_alias" | "const" | "static";
+export type RustEntityType = "function" | "struct" | "impl" | "trait" | "enum" | "enum_variant" | "mod" | "type_alias" | "const" | "static" | "associated_type" | "associated_const" | "macro" | "union";
 
 export interface RustEntity {
     /** Type of the entity */
@@ -292,11 +292,11 @@ function traverseTree(
         const isExported = isPublic(node);
 
         result.entities.push({
-            kind: parentStruct ? "function" : "function",
+            kind: "function", // Rust functions are always "function" type, even when inside impl blocks
             name,
             parent: parentStruct,
             startLine: startRow + 1, // tree-sitter uses 0-based, we use 1-based
-            endLine: endRow + 1, // endPosition.row is 0-based exclusive
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
             docstring,
             parameters,
             returnType,
@@ -319,7 +319,7 @@ function traverseTree(
             kind: "struct",
             name,
             startLine: startRow + 1,
-            endLine: endRow + 1,
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
             docstring,
             isExported,
         });
@@ -344,7 +344,7 @@ function traverseTree(
             kind: "impl",
             name: implName,
             startLine: startRow + 1,
-            endLine: endRow + 1,
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
             docstring,
             isExported,
         });
@@ -364,8 +364,8 @@ function traverseTree(
 
     // Handle trait definitions
     if (nodeType === "trait_item") {
-        const name = extractName(node);
-        if (!name) return;
+        const traitName = extractName(node);
+        if (!traitName) return;
 
         const startRow = node.startPosition.row;
         const endRow = node.endPosition.row;
@@ -374,20 +374,104 @@ function traverseTree(
 
         result.entities.push({
             kind: "trait",
-            name,
+            name: traitName,
             startLine: startRow + 1,
-            endLine: endRow + 1,
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
             docstring,
             isExported,
         });
 
         // Traverse trait body to find method signatures
+        // Trait methods can be:
+        // 1. associated_function (method signatures without bodies) - this is the main case
+        // 2. function_item (default implementations with bodies)
+        // 3. Other associated items (types, constants, etc.)
         const body = node.childForFieldName("body");
         if (body) {
             for (let i = 0; i < body.childCount; i++) {
                 const child = body.child(i);
-                if (child && (child.type === "function_item" || child.type === "trait_item")) {
-                    traverseTree(child, content, result, name);
+                if (child) {
+                    // Handle trait method signatures (without bodies)
+                    // Tree-sitter-rust uses different node types for trait methods:
+                    // - associated_function: trait method signatures
+                    // - function_signature_item: alternative node type
+                    // - function_item: default implementations with bodies
+                    const isTraitMethodSignature = 
+                        child.type === "associated_function" || 
+                        child.type === "function_signature_item" ||
+                        (child.type === "function_item" && !child.childForFieldName("body"));
+                    
+                    if (isTraitMethodSignature) {
+                        const methodName = extractName(child);
+                        if (methodName) {
+                            const startRow = child.startPosition.row;
+                            const endRow = child.endPosition.row;
+                            const docstring = extractDocComment(child, content);
+                            const parameters = extractParameters(child, content);
+                            const returnType = extractReturnType(child, content);
+                            const isExported = isPublic(child);
+
+                            result.entities.push({
+                                kind: "function",
+                                name: methodName,
+                                parent: traitName, // Parent is the trait name
+                                startLine: startRow + 1,
+                                endLine: endRow,
+                                docstring,
+                                parameters,
+                                returnType,
+                                isExported,
+                            });
+                            continue; // Skip recursive traversal for this node
+                        }
+                    }
+                    // Handle associated types in traits (type MyType;)
+                    if (child.type === "associated_type") {
+                        const typeName = extractName(child);
+                        if (typeName) {
+                            const startRow = child.startPosition.row;
+                            const endRow = child.endPosition.row;
+                            const docstring = extractDocComment(child, content);
+                            const isExported = isPublic(child);
+
+                            result.entities.push({
+                                kind: "associated_type",
+                                name: typeName,
+                                parent: traitName,
+                                startLine: startRow + 1,
+                                endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
+                                docstring,
+                                isExported,
+                            });
+                            continue;
+                        }
+                    }
+
+                    // Handle associated constants in traits (const MY_CONST: Type;)
+                    if (child.type === "associated_const") {
+                        const constName = extractName(child);
+                        if (constName) {
+                            const startRow = child.startPosition.row;
+                            const endRow = child.endPosition.row;
+                            const docstring = extractDocComment(child, content);
+                            const isExported = isPublic(child);
+
+                            result.entities.push({
+                                kind: "associated_const",
+                                name: constName,
+                                parent: traitName,
+                                startLine: startRow + 1,
+                                endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
+                                docstring,
+                                isExported,
+                            });
+                            continue;
+                        }
+                    }
+
+                    // Also handle function_item (for default implementations in traits)
+                    // Recursively traverse all children to catch any other patterns
+                    traverseTree(child, content, result, traitName);
                 }
             }
         }
@@ -396,8 +480,8 @@ function traverseTree(
 
     // Handle enum definitions
     if (nodeType === "enum_item") {
-        const name = extractName(node);
-        if (!name) return;
+        const enumName = extractName(node);
+        if (!enumName) return;
 
         const startRow = node.startPosition.row;
         const endRow = node.endPosition.row;
@@ -406,12 +490,38 @@ function traverseTree(
 
         result.entities.push({
             kind: "enum",
-            name,
+            name: enumName,
             startLine: startRow + 1,
-            endLine: endRow + 1,
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
             docstring,
             isExported,
         });
+
+        // Extract individual enum variants
+        const body = node.childForFieldName("body");
+        if (body) {
+            for (let i = 0; i < body.childCount; i++) {
+                const child = body.child(i);
+                if (child && child.type === "variant_item") {
+                    const variantName = extractName(child);
+                    if (variantName) {
+                        const variantStartRow = child.startPosition.row;
+                        const variantEndRow = child.endPosition.row;
+                        const variantDocstring = extractDocComment(child, content);
+                        const variantIsExported = isExported; // Variants inherit enum visibility
+
+                        result.entities.push({
+                            kind: "enum_variant",
+                            name: variantName,
+                            startLine: variantStartRow + 1,
+                            endLine: variantEndRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
+                            docstring: variantDocstring,
+                            isExported: variantIsExported,
+                        });
+                    }
+                }
+            }
+        }
         return;
     }
 
@@ -429,7 +539,7 @@ function traverseTree(
             kind: "type_alias",
             name,
             startLine: startRow + 1,
-            endLine: endRow + 1,
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
             docstring,
             isExported,
         });
@@ -450,7 +560,7 @@ function traverseTree(
             kind: "const",
             name,
             startLine: startRow + 1,
-            endLine: endRow + 1,
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
             docstring,
             isExported,
         });
@@ -471,7 +581,71 @@ function traverseTree(
             kind: "static",
             name,
             startLine: startRow + 1,
-            endLine: endRow + 1,
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
+            docstring,
+            isExported,
+        });
+        return;
+    }
+
+    // Handle macro definitions (macro_rules!)
+    if (nodeType === "macro_definition" || nodeType === "macro_rules") {
+        const name = extractName(node);
+        if (!name) return;
+
+        const startRow = node.startPosition.row;
+        const endRow = node.endPosition.row;
+        const docstring = extractDocComment(node, content);
+        const isExported = isPublic(node);
+
+        result.entities.push({
+            kind: "macro",
+            name,
+            startLine: startRow + 1,
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
+            docstring,
+            isExported,
+        });
+        return;
+    }
+
+    // Handle module declarations (mod my_module; or mod my_module { ... })
+    if (nodeType === "mod_item") {
+        const name = extractName(node);
+        if (!name) return;
+
+        const startRow = node.startPosition.row;
+        const endRow = node.endPosition.row;
+        const docstring = extractDocComment(node, content);
+        const isExported = isPublic(node);
+
+        result.entities.push({
+            kind: "mod",
+            name,
+            startLine: startRow + 1,
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
+            docstring,
+            isExported,
+        });
+        // Continue traversing to extract items inside the module
+        return;
+    }
+
+    // Handle union types
+    if (nodeType === "union_item") {
+        const name = extractName(node);
+        if (!name) return;
+
+        const startRow = node.startPosition.row;
+        const endRow = node.endPosition.row;
+        const docstring = extractDocComment(node, content);
+        const isExported = isPublic(node);
+
+        result.entities.push({
+            kind: "union",
+            name,
+            startLine: startRow + 1,
+            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
             docstring,
             isExported,
         });

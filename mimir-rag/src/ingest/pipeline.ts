@@ -373,18 +373,26 @@ export async function runIngestionPipeline(
         }
     }
     
+    // Safety check: If we couldn't parse any repository URLs, skip orphan detection
+    // to prevent accidentally deleting chunks from other repositories
+    if (repositoryIdentifiers.size === 0) {
+        ingestionLogger.warn(
+            "Could not parse any GitHub repository URLs. Skipping orphan chunk detection to prevent accidental deletion of chunks from other repositories."
+        );
+    }
+    
     // Also find and mark stranded chunks in __moving__ locations for cleanup
     // These are chunks that were left in temporary locations from previous failed moves
-    const strandedChunkIds = await store.findStrandedChunkIds(
-        activeChecksums,
-        repositoryIdentifiers.size > 0 ? repositoryIdentifiers : undefined
-    );
+    // Only perform if we have repository identifiers to scope the operation
+    const strandedChunkIds = repositoryIdentifiers.size > 0
+        ? await store.findStrandedChunkIds(activeChecksums, repositoryIdentifiers)
+        : [];
     
     // Pass repository identifiers to scope orphan detection to only the repositories being ingested
-    const orphanedIds = await store.findOrphanedChunkIds(
-        activeChecksums,
-        repositoryIdentifiers.size > 0 ? repositoryIdentifiers : undefined
-    );
+    // Only perform if we have repository identifiers to scope the operation
+    const orphanedIds = repositoryIdentifiers.size > 0
+        ? await store.findOrphanedChunkIds(activeChecksums, repositoryIdentifiers)
+        : [];
 
     // Move chunks to new locations (two-phase to avoid conflicts)
     const movedChunks = classifications.filter(

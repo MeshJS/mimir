@@ -89,21 +89,74 @@ function createEntityChunks(entity: UnifiedEntity, options: ChunkerOptions): Ent
 }
 
 /**
- * Type guard to check if entity is a Python entity
+ * Type guard to check if entity is a Rust entity
+ * Must be checked first since Rust and Python share some entity types (e.g., 'function')
+ * 
+ * Strategy:
+ * 1. Check for Rust-specific entity types (struct, impl, trait, enum, mod, type_alias, const, static)
+ * 2. For 'function' type: Use qualifiedName format to distinguish - Rust uses '::' separator,
+ *    Python uses '.' separator. Rust functions can also be methods in impl blocks (have parentContext),
+ *    and Python methods have entityType === 'method', not 'function'
  */
-function isPythonEntity(entity: UnifiedEntity): entity is PythonEntity {
-    return 'docstring' in entity && !('jsDoc' in entity) && 'entityType' in entity && 
-           (entity.entityType === 'function' || entity.entityType === 'class' || entity.entityType === 'method' || entity.entityType === 'variable' || entity.entityType === 'module');
+function isRustEntity(entity: UnifiedEntity): entity is RustEntity {
+    if (!('docstring' in entity) || ('jsDoc' in entity)) {
+        return false;
+    }
+    if (!('entityType' in entity)) {
+        return false;
+    }
+    
+    // Check for Rust-specific entity types
+    const rustSpecificTypes = ['struct', 'impl', 'trait', 'enum', 'enum_variant', 'mod', 'type_alias', 'const', 'static', 'associated_type', 'associated_const', 'macro', 'union'];
+    if (rustSpecificTypes.includes(entity.entityType)) {
+        return true;
+    }
+    
+    // For 'function' type, distinguish Rust from Python using qualifiedName format
+    // Rust uses '::' as separator, Python uses '.'
+    if (entity.entityType === 'function') {
+        // Rust qualified names use '::' separator (e.g., "module::Struct::method")
+        // Python qualified names use '.' separator (e.g., "module.Class.method")
+        if (entity.qualifiedName.includes('::')) {
+            return true;
+        }
+        // Functions with parentContext are Rust methods (Python methods use entityType 'method')
+        if (entity.parentContext !== undefined) {
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 /**
- * Type guard to check if entity is a Rust entity
+ * Type guard to check if entity is a Python entity
+ * Only checks Python-specific types, excluding Rust-specific types to avoid false positives
  */
-function isRustEntity(entity: UnifiedEntity): entity is RustEntity {
-    return 'docstring' in entity && !('jsDoc' in entity) && 'entityType' in entity && 
-           (entity.entityType === 'struct' || entity.entityType === 'impl' || entity.entityType === 'trait' || 
-            entity.entityType === 'enum' || entity.entityType === 'mod' || entity.entityType === 'type_alias' ||
-            entity.entityType === 'const' || entity.entityType === 'static');
+function isPythonEntity(entity: UnifiedEntity): entity is PythonEntity {
+    // First check if it's a Rust entity - if so, it's not Python
+    if (isRustEntity(entity)) {
+        return false;
+    }
+    
+    // Must have docstring (not jsDoc) and entityType
+    if (!('docstring' in entity) || ('jsDoc' in entity) || !('entityType' in entity)) {
+        return false;
+    }
+    
+    // For 'function' type, must have Python-specific patterns ('.' separator in qualifiedName)
+    // Rust uses '::' separator, Python uses '.' separator
+    if (entity.entityType === 'function') {
+        // Python functions use '.' separator in qualifiedName (e.g., "module.Class.method")
+        // Rust functions use '::' separator (e.g., "module::Struct::method")
+        return entity.qualifiedName.includes('.') && !entity.qualifiedName.includes('::');
+    }
+    
+    // For other types, check Python-specific entity types
+    return entity.entityType === 'class' || 
+           entity.entityType === 'method' || 
+           entity.entityType === 'variable' || 
+           entity.entityType === 'module';
 }
 
 /**
@@ -121,12 +174,16 @@ function entityToChunk(entity: UnifiedEntity, partNumber?: number, totalParts?: 
     let entityType: EntityType;
     if (entity.entityType === 'module' || entity.entityType === 'mod') {
         entityType = 'variable' as EntityType; // Map module/mod to variable as fallback
-    } else if (entity.entityType === 'struct' || entity.entityType === 'trait' || entity.entityType === 'impl') {
-        entityType = 'class' as EntityType; // Map Rust struct/trait/impl to class
-    } else if (entity.entityType === 'type_alias') {
-        entityType = 'type' as EntityType; // Map Rust type_alias to type
-    } else if (entity.entityType === 'const' || entity.entityType === 'static') {
-        entityType = 'variable' as EntityType; // Map Rust const/static to variable
+    } else if (entity.entityType === 'struct' || entity.entityType === 'trait' || entity.entityType === 'impl' || entity.entityType === 'union') {
+        entityType = 'class' as EntityType; // Map Rust struct/trait/impl/union to class
+    } else if (entity.entityType === 'type_alias' || entity.entityType === 'associated_type') {
+        entityType = 'type' as EntityType; // Map Rust type_alias and associated_type to type
+    } else if (entity.entityType === 'const' || entity.entityType === 'static' || entity.entityType === 'associated_const') {
+        entityType = 'variable' as EntityType; // Map Rust const/static/associated_const to variable
+    } else if (entity.entityType === 'enum_variant') {
+        entityType = 'enum' as EntityType; // Map Rust enum_variant to enum
+    } else if (entity.entityType === 'macro') {
+        entityType = 'function' as EntityType; // Map Rust macro to function (macros are function-like)
     } else {
         entityType = entity.entityType as EntityType;
     }
@@ -244,12 +301,16 @@ function splitEntity(entity: UnifiedEntity, options: ChunkerOptions): EntityChun
     let entityType: EntityType;
     if (entity.entityType === 'module' || entity.entityType === 'mod') {
         entityType = 'variable' as EntityType; // Map module/mod to variable as fallback
-    } else if (entity.entityType === 'struct' || entity.entityType === 'trait' || entity.entityType === 'impl') {
-        entityType = 'class' as EntityType; // Map Rust struct/trait/impl to class
-    } else if (entity.entityType === 'type_alias') {
-        entityType = 'type' as EntityType; // Map Rust type_alias to type
-    } else if (entity.entityType === 'const' || entity.entityType === 'static') {
-        entityType = 'variable' as EntityType; // Map Rust const/static to variable
+    } else if (entity.entityType === 'struct' || entity.entityType === 'trait' || entity.entityType === 'impl' || entity.entityType === 'union') {
+        entityType = 'class' as EntityType; // Map Rust struct/trait/impl/union to class
+    } else if (entity.entityType === 'type_alias' || entity.entityType === 'associated_type') {
+        entityType = 'type' as EntityType; // Map Rust type_alias and associated_type to type
+    } else if (entity.entityType === 'const' || entity.entityType === 'static' || entity.entityType === 'associated_const') {
+        entityType = 'variable' as EntityType; // Map Rust const/static/associated_const to variable
+    } else if (entity.entityType === 'enum_variant') {
+        entityType = 'enum' as EntityType; // Map Rust enum_variant to enum
+    } else if (entity.entityType === 'macro') {
+        entityType = 'function' as EntityType; // Map Rust macro to function (macros are function-like)
     } else {
         entityType = entity.entityType as EntityType;
     }
