@@ -216,7 +216,7 @@ export async function askAi(
     // instead of recomputing links from config at query time.
     const sources: AskAiSource[] = buildSourcesFromChunks(matches);
 
-    activeLogger.info({ answer: result.answer, sourcesCount: sources.length }, "answer from the AI");
+    activeLogger.info({ sourcesCount: sources.length }, "answer from the AI");
 
     return { answer: result.answer, sources };
 }
