@@ -549,10 +549,13 @@ export async function runIngestionPipeline(
             // These are stored in the database and used for tracking
             const entityLineRanges = chunks
                 .filter(entry => entry.chunk.sourceType === 'code')
-                .map(entry => ({
-                    startLine: entry.chunk.chunk.startLine ?? 1,
-                    endLine: entry.chunk.chunk.endLine ?? 1,
-                }));
+                .map(entry => {
+                    const chunk = entry.chunk.chunk as { startLine?: number; endLine?: number };
+                    return {
+                        startLine: chunk.startLine ?? 1,
+                        endLine: chunk.endLine ?? 1,
+                    };
+                });
 
             const contextTask = llm.chat
                 .generateEntityContexts(entityInputs, document.content, filepath, entityLineRanges)

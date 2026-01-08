@@ -33,6 +33,13 @@ const DEFAULT_SYSTEM_PROMPT = [
     "- Sources are handled separately by the system - just provide the answer content",
     "- End your response when the answer is complete, without extra closing remarks",
     "",
+    "Source Attribution - Be Strict and Selective:",
+    "- Only include sources in the 'sources' array that you actually referenced or used to generate your answer",
+    "- Do not include sources just because they were provided as context - only include what you used",
+    "- If a source wasn't used to support any part of your answer, do not include it",
+    "- Review each source carefully before including it - ask yourself: 'Did I actually use this source?'",
+    "- When in doubt, exclude the source rather than include it",
+    "",
     "Prioritize accuracy and completeness over brevity. When given detailed specifications, ensure every requirement is properly implemented.",
 ].join(" ");
 
@@ -43,7 +50,7 @@ export const sourceSchema = z.object({
 });
 
 export const answerWithSourcesSchema = z.object({
-    sources: z.array(sourceSchema).describe("Array of sources that were used to generate the answer. Provide this FIRST."),
+    sources: z.array(sourceSchema).describe("CRITICAL: This array must contain ONLY the sources you ACTUALLY USED. DO NOT include all provided sources. If you were given 10 sources but only used 2, return only those 2. Review each source: did you quote it? reference it? use its content? If NO, exclude it. Example: For 'how to install X', you typically need 1 source, not 10. Provide this FIRST."),
     answer: z.string().describe("The answer to the user's question"),
 });
 
@@ -63,7 +70,7 @@ function formatDocumentChunks(chunks: DocumentChunk[]): string {
         return `${index + 1}. filepath: "${chunk.filepath}", chunkTitle: "${title}"`;
     }).join("\n");
 
-    return `${formattedChunks}\n\n---\n\nAvailable sources (select only the sources you actually used):\n${availableSources}\n\nWhen the user provides specific values (addresses, policy IDs, names, etc.), ensure you use those exact values in your code. Cross-reference any values mentioned in the user's request with the documentation context.`.trim();
+    return `${formattedChunks}\n\n---\n\nCRITICAL SOURCE SELECTION RULES:\nYou have been provided ${chunks.length} context sources above. You MUST only include sources you ACTUALLY USED.\n\nRULES:\n1. Review each source: "Did I quote, reference, or use content from this source in my answer?"\n2. If NO → DO NOT include it in the 'sources' array\n3. If YES → Include it\n4. For simple questions (e.g., "how to install X"), you typically need 1 source, NOT ${chunks.length}\n5. Example: If asked "how to install mesh" and you found the answer in Source 3, return ONLY Source 3, not all ${chunks.length} sources\n6. When in doubt, EXCLUDE the source\n\nDO NOT include all ${chunks.length} sources just because they were provided. Only include what you actually used.\n\nAvailable sources:\n${availableSources}\n\nWhen the user provides specific values (addresses, policy IDs, names, etc.), ensure you use those exact values in your code. Cross-reference any values mentioned in the user's request with the documentation context.`.trim();
 }
 
 function formatSingleChunkContext(context: contextualChunkInput): string {
