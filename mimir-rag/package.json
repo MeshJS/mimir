@@ -37,6 +37,7 @@
     "pino": "^10.1.0",
     "tiktoken": "^1.0.22",
     "tree-sitter-python": "^0.25.0",
+    "tree-sitter-rust": "^0.24.0",
     "typescript": "^5.9.3",
     "web-tree-sitter": "^0.26.3"
   }

@@ -6,11 +6,13 @@ import { downloadGithubFiles, downloadGithubMdxFiles, GithubMdxDocument, GithubD
 import { chunkMdxFile, enforceChunkTokenLimit, MdxChunk } from "./chunkers/chunker";
 import { parseTypescriptFile, ParsedFile } from "./parsers/astParser";
 import { parsePythonFile, ParsedPythonFile } from "./parsers/pythonAstParser";
+import { parseRustFile, ParsedRustFile } from "./parsers/rustAstParser";
 import { chunkParsedFile, EntityChunk } from "./chunkers/entityChunker";
 import type { SupabaseVectorStore } from "../supabase/client";
 import type { DocumentChunk } from "../supabase/types";
 import { resolveEmbeddingInputTokenLimit } from "../llm/modelLimits";
 import { resolveSourceLinks } from "../utils/sourceLinks";
+import { parseGithubUrl } from "../github/utils";
 
 interface PendingEmbeddingChunk {
     filepath: string;
@@ -84,13 +86,14 @@ export async function runIngestionPipeline(
     const mdxCount = documents.filter(d => d.type === 'mdx').length;
     const tsCount = documents.filter(d => d.type === 'typescript').length;
     const pyCount = documents.filter(d => d.type === 'python').length;
-    ingestionLogger.info(`Processing ${documents.length} document${documents.length === 1 ? "" : "s"} (${mdxCount} MDX, ${tsCount} TypeScript, ${pyCount} Python).`);
+    const rustCount = documents.filter(d => d.type === 'rust').length;
+    ingestionLogger.info(`Processing ${documents.length} document${documents.length === 1 ? "" : "s"} (${mdxCount} MDX, ${tsCount} TypeScript, ${pyCount} Python, ${rustCount} Rust).`);
 
     // Collect target state from all documents: checksum -> target location
     const targetState = new Map<string, TargetChunkLocation>();
     const allChecksums: string[] = [];
     const documentMap = new Map<string, GithubDocument>(); // filepath -> document
-    const documentChunksMap = new Map<string, { chunks: UnifiedChunk[]; parsedFile?: ParsedFile | ParsedPythonFile }>(); // filepath -> {chunks, parsedFile}
+    const documentChunksMap = new Map<string, { chunks: UnifiedChunk[]; parsedFile?: ParsedFile | ParsedPythonFile | ParsedRustFile }>(); // filepath -> {chunks, parsedFile}
 
     for (const document of documents) {
         const filepath = document.relativePath || document.path;
@@ -137,14 +140,16 @@ export async function runIngestionPipeline(
                 });
                 allChecksums.push(chunk.checksum);
             });
-        } else if (document.type === 'typescript' || document.type === 'python') {
-            // Process TypeScript and Python files
-            let parsedFile: ParsedFile | ParsedPythonFile;
+        } else if (document.type === 'typescript' || document.type === 'python' || document.type === 'rust') {
+            // Process TypeScript, Python, and Rust files
+            let parsedFile: ParsedFile | ParsedPythonFile | ParsedRustFile;
             try {
                 if (document.type === 'typescript') {
                     parsedFile = parseTypescriptFile(filepath, document.content, appConfig.parser);
-                } else {
+                } else if (document.type === 'python') {
                     parsedFile = await parsePythonFile(filepath, document.content);
+                } else {
+                    parsedFile = await parseRustFile(filepath, document.content);
                 }
             } catch (error) {
                 fileLogger.error({ err: error }, `Failed to parse ${document.type} file. Skipping.`);
@@ -211,12 +216,12 @@ export async function runIngestionPipeline(
 
     /**
      * Normalize source types to standardized values for comparison
-     * 'typescript', 'python' -> 'code'; 'mdx' -> 'doc'
+     * 'typescript', 'python', 'rust' -> 'code'; 'mdx' -> 'doc'
      */
     function normalizeSourceType(sourceType?: string): 'doc' | 'code' | undefined {
         if (!sourceType) return undefined;
         if (sourceType === 'code' || sourceType === 'doc') return sourceType;
-        if (sourceType === 'typescript' || sourceType === 'python') return 'code';
+        if (sourceType === 'typescript' || sourceType === 'python' || sourceType === 'rust') return 'code';
         if (sourceType === 'mdx') return 'doc';
         return undefined;
     }
@@ -346,11 +351,48 @@ export async function runIngestionPipeline(
     // Find orphaned chunks (checksums not in target state)
     const activeChecksums = new Set(targetState.keys());
     
+    // Extract repository identifiers from the config to scope orphan detection
+    // This prevents deleting chunks from other repositories when ingesting a new one
+    const repositoryIdentifiers = new Set<string>();
+    const githubConfig = appConfig.github;
+    
+    // Extract from main URL, code URL, and docs URL
+    const urlsToCheck = [
+        githubConfig.githubUrl,
+        githubConfig.codeUrl,
+        githubConfig.docsUrl,
+    ].filter((url): url is string => Boolean(url));
+    
+    for (const url of urlsToCheck) {
+        try {
+            const parsed = parseGithubUrl(url);
+            const repoIdentifier = `${parsed.owner}/${parsed.repo}`;
+            repositoryIdentifiers.add(repoIdentifier);
+        } catch (error) {
+            ingestionLogger.warn({ err: error, url }, "Failed to parse GitHub URL for repository scoping");
+        }
+    }
+    
+    // Safety check: If we couldn't parse any repository URLs, skip orphan detection
+    // to prevent accidentally deleting chunks from other repositories
+    if (repositoryIdentifiers.size === 0) {
+        ingestionLogger.warn(
+            "Could not parse any GitHub repository URLs. Skipping orphan chunk detection to prevent accidental deletion of chunks from other repositories."
+        );
+    }
+    
     // Also find and mark stranded chunks in __moving__ locations for cleanup
     // These are chunks that were left in temporary locations from previous failed moves
-    const strandedChunkIds = await store.findStrandedChunkIds(activeChecksums);
+    // Only perform if we have repository identifiers to scope the operation
+    const strandedChunkIds = repositoryIdentifiers.size > 0
+        ? await store.findStrandedChunkIds(activeChecksums, repositoryIdentifiers)
+        : [];
     
-    const orphanedIds = await store.findOrphanedChunkIds(activeChecksums);
+    // Pass repository identifiers to scope orphan detection to only the repositories being ingested
+    // Only perform if we have repository identifiers to scope the operation
+    const orphanedIds = repositoryIdentifiers.size > 0
+        ? await store.findOrphanedChunkIds(activeChecksums, repositoryIdentifiers)
+        : [];
 
     // Move chunks to new locations (two-phase to avoid conflicts)
     const movedChunks = classifications.filter(
@@ -503,8 +545,20 @@ export async function runIngestionPipeline(
                 throw new Error(`Mismatched chunk type for code file ${filepath}`);
             });
 
+            // Extract line ranges for each entity chunk (for TypeScript, Python, and Rust)
+            // These are stored in the database and used for tracking
+            const entityLineRanges = chunks
+                .filter(entry => entry.chunk.sourceType === 'code')
+                .map(entry => {
+                    const chunk = entry.chunk.chunk as { startLine?: number; endLine?: number };
+                    return {
+                        startLine: chunk.startLine ?? 1,
+                        endLine: chunk.endLine ?? 1,
+                    };
+                });
+
             const contextTask = llm.chat
-                .generateEntityContexts(entityInputs, document.content, filepath)
+                .generateEntityContexts(entityInputs, document.content, filepath, entityLineRanges)
                 .then((contexts) => {
                     if (contexts.length !== chunks.length) {
                         throw new Error(

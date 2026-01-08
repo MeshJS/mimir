@@ -99,8 +99,10 @@ export async function parsePythonFile(
 
     const entities: PythonEntity[] = [];
 
-    // Add a module-level entity for overall context
-    if (content.trim().length > 0) {
+    // Only add module-level entity if there are no individual entities
+    // This prevents duplication and poor chunking when individual functions/classes exist
+    // The module entity is only useful when the file contains only module-level code
+    if (content.trim().length > 0 && astResult.entities.length === 0) {
         // Calculate endLine correctly: count newlines and handle trailing newline
         // If content ends with newline, the trailing newline doesn't create a new content line
         // Example: "line1\nline2\n" has 2 newlines but only 2 lines of content

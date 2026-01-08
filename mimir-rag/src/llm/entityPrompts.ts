@@ -1,16 +1,14 @@
 import type { EntityContextInput } from "./types";
 
-const ENTITY_CONTEXT_SYSTEM_PROMPT = `You are a code documentation expert. Your task is to generate concise, informative context descriptions for code entities (for example, TypeScript or Python).
+const ENTITY_CONTEXT_SYSTEM_PROMPT = `You are a code documentation expert. Your task is to generate concise, informative context descriptions for code entities.
 
-For each code entity provided, write a short context (100-200 tokens) that:
-1. Explains the entity's purpose and role in the codebase
-2. Describes key parameters, return types, or properties
-3. Notes any important dependencies or relationships with other code
-4. Highlights any notable patterns or design decisions
+For each code entity, provide a short succinct context that:
+1. Explains what the code entity does and its purpose
+2. Situates the entity within the overall document (where it fits, its role in the file)
 
-The context should help someone searching for this code understand what it does without reading the full implementation.
+The context should help improve search retrieval by clearly describing what the entity does and how it fits into the larger codebase context.
 
-Be precise and technical. Focus on WHAT the code does and WHY, not HOW (the code itself shows that).`;
+Be precise and succinct. Focus on WHAT the code does and WHERE it fits, not HOW (the code itself shows that).`;
 
 /**
  * Determine programming language from filepath
@@ -55,10 +53,17 @@ export function buildEntityContextPrompt(entity: EntityContextInput, filepath?: 
     return parts.join("\n");
 }
 
-export function buildBatchContextPrompt(entities: EntityContextInput[], fileContent: string, filepath?: string): string {
+export function buildBatchContextPrompt(
+    entities: EntityContextInput[], 
+    fileContent: string, 
+    filepath?: string,
+    entityLineRanges?: Array<{ startLine: number; endLine: number }>
+): string {
     const language = getLanguageFromFilepath(filepath);
     const entitySections = entities.map((entity, index) => {
-        return `--- Entity ${index + 1} ---\n${buildEntityContextPrompt(entity, filepath)}`;
+        const lineRange = entityLineRanges?.[index];
+        const lineInfo = lineRange ? ` (lines ${lineRange.startLine}-${lineRange.endLine})` : "";
+        return `--- Entity ${index + 1}${lineInfo} ---\n${buildEntityContextPrompt(entity, filepath)}`;
     }).join("\n\n");
 
     return `Generate context descriptions for the following ${entities.length} code entities from the same file.
@@ -70,7 +75,7 @@ ${fileContent}
 
 ${entitySections}
 
-For each entity, provide a concise context description (100-200 tokens) that explains its purpose, key characteristics, and relationships. Format your response as a numbered list matching the entity numbers above.`;
+For each entity, please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else. Format your response as a numbered list matching the entity numbers above.`;
 }
 
 

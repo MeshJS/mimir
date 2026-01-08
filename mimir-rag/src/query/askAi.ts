@@ -96,6 +96,38 @@ function buildSourcesFromChunks(chunks: RetrievedChunk[]): AskAiSource[] {
     });
 }
 
+
+// Maps AI-reported sources back to actual chunks
+function mapAiSourcesToChunks(
+    aiSources: Array<{ filepath: string; chunkTitle: string; url?: string }>,
+    allMatches: RetrievedChunk[]
+): AskAiSource[] {
+    const matchedChunks: RetrievedChunk[] = [];
+    
+    for (const aiSource of aiSources) {
+        const match = allMatches.find(
+            (chunk) =>
+                chunk.filepath === aiSource.filepath &&
+                (chunk.chunkTitle === aiSource.chunkTitle ||
+                    chunk.chunkTitle?.toLowerCase() === aiSource.chunkTitle?.toLowerCase())
+        );
+        
+        if (match) {
+            matchedChunks.push(match);
+        } else {
+            const fallbackMatch = allMatches.find(
+                (chunk) => chunk.filepath === aiSource.filepath
+            );
+            if (fallbackMatch) {
+                matchedChunks.push(fallbackMatch);
+            }
+        }
+    }
+    
+    return buildSourcesFromChunks(matchedChunks);
+}
+
+
 export async function askAi(
     llm: LLMClientBundle,
     store: SupabaseVectorStore,
@@ -191,11 +223,9 @@ export async function askAi(
                     }
                 }
                 if (chunk.sources && chunk.sources.length > 0) {
-                    // Replace any model-reported sources with canonical ones derived from retrieved chunks.
+                    // Use only the sources that the AI actually reported using
                     collectedSources.length = 0;
-                    collectedSources.push(
-                        ...buildSourcesFromChunks(matches)
-                    );
+                    collectedSources.push(...mapAiSourcesToChunks(chunk.sources, matches));
                 }
             }
         }
@@ -212,11 +242,19 @@ export async function askAi(
         signal: options.signal,
     });
 
-    // Build canonical sources directly from retrieved chunks (DB state),
-    // instead of recomputing links from config at query time.
-    const sources: AskAiSource[] = buildSourcesFromChunks(matches);
+    // Use only the sources that the AI actually reported using
+    const sources: AskAiSource[] = result.sources && result.sources.length > 0
+        ? mapAiSourcesToChunks(result.sources, matches)
+        : [];
 
-    activeLogger.info({ answer: result.answer, sourcesCount: sources.length }, "answer from the AI");
+    activeLogger.info(
+        {
+            sourcesCount: sources.length,
+            aiReportedCount: result.sources?.length ?? 0,
+            totalMatches: matches.length
+        },
+        "answer from the AI"
+    );
 
     return { answer: result.answer, sources };
 }

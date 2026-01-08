@@ -15,6 +15,7 @@ import { getLogger } from "../utils/logger";
 import pLimit from "p-limit";
 import { downloadGithubTypescriptFiles, GithubTypescriptDocument } from "./github/typescript";
 import { downloadGithubPythonFiles, GithubPythonDocument } from "./github/python";
+import { downloadGithubRustFiles, GithubRustDocument } from "./github/rust";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const RAW_GITHUB_BASE = "https://raw.githubusercontent.com";
@@ -55,7 +56,7 @@ export interface GithubMdxDocument {
     sourceUrl: string;
 }
 
-export type GithubDocumentType = "mdx" | "typescript" | "python";
+export type GithubDocumentType = "mdx" | "typescript" | "python" | "rust";
 
 export interface GithubDocument {
     type: GithubDocumentType;
@@ -420,7 +421,7 @@ export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubD
         }
     }
 
-    // Download TypeScript and Python files from code repo
+    // Download TypeScript, Python, and Rust files from code repo
     if (codeUrl) {
         try {
             // Use code-specific config, falling back to main config
@@ -436,9 +437,10 @@ export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubD
                 } 
             };
 
-            const [tsFiles, pyFiles] = await Promise.all([
+            const [tsFiles, pyFiles, rustFiles] = await Promise.all([
                 downloadGithubTypescriptFiles(codeConfig),
                 downloadGithubPythonFiles(codeConfig),
+                downloadGithubRustFiles(codeConfig),
             ]);
 
             documents.push(
@@ -450,11 +452,15 @@ export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubD
                     type: "python" as const,
                     ...doc,
                 })),
+                ...rustFiles.map((doc) => ({
+                    type: "rust" as const,
+                    ...doc,
+                })),
             );
 
-            logger.info(`Found ${tsFiles.length} TypeScript file${tsFiles.length === 1 ? "" : "s"} and ${pyFiles.length} Python file${pyFiles.length === 1 ? "" : "s"} from ${codeUrl}.`);
+            logger.info(`Found ${tsFiles.length} TypeScript file${tsFiles.length === 1 ? "" : "s"}, ${pyFiles.length} Python file${pyFiles.length === 1 ? "" : "s"}, and ${rustFiles.length} Rust file${rustFiles.length === 1 ? "" : "s"} from ${codeUrl}.`);
         } catch (error) {
-            logger.warn({ err: error, url: codeUrl }, "Failed to download TypeScript/Python files; continuing with MDX files only.");
+            logger.warn({ err: error, url: codeUrl }, "Failed to download TypeScript/Python/Rust files; continuing with MDX files only.");
         }
     }
 
