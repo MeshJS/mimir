@@ -141,11 +141,15 @@ Key configuration variables include:
 - **Supabase**: `MIMIR_SUPABASE_URL` (required), `MIMIR_SUPABASE_SERVICE_ROLE_KEY` (required), `MIMIR_SUPABASE_TABLE` (optional, default: "docs")
 - **GitHub** (language-agnostic code + docs ingestion): 
   - `MIMIR_GITHUB_URL` - Main repository URL (fallback if separate repos not set)
-  - `MIMIR_GITHUB_CODE_URL` - Separate repository for code (TypeScript, Python, etc.) (optional)
-  - `MIMIR_GITHUB_DOCS_URL` - Separate repository for MDX documentation (optional)
+  - `MIMIR_GITHUB_CODE_URL` - Separate repository for code (TypeScript, Python, etc.) (optional, backward compatible)
+  - `MIMIR_GITHUB_DOCS_URL` - Separate repository for MDX documentation (optional, backward compatible)
   - `MIMIR_GITHUB_TOKEN`, `MIMIR_GITHUB_DIRECTORY`, `MIMIR_GITHUB_BRANCH`
   - `MIMIR_GITHUB_CODE_DIRECTORY`, `MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES` - Code repo specific settings
   - `MIMIR_GITHUB_DOCS_DIRECTORY`, `MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES` - Docs repo specific settings
+  - **Multiple Repositories**: Use numbered variables for multiple repos:
+    - `MIMIR_GITHUB_CODE_REPO_1_URL`, `MIMIR_GITHUB_CODE_REPO_1_DIRECTORY`, etc.
+    - `MIMIR_GITHUB_DOCS_REPO_1_URL`, `MIMIR_GITHUB_DOCS_REPO_1_BASE_URL`, etc.
+  - See [Configuration Documentation](../mimir-docs/app/configuration) for complete details
 - **Parser**: 
   - `MIMIR_EXTRACT_VARIABLES` - Extract top-level variables (default: false)
   - `MIMIR_EXTRACT_METHODS` - Extract class methods (default: true)
@@ -158,9 +162,11 @@ Key configuration variables include:
 
 `MIMIR_LLM_EMBEDDING_PROVIDER` supports `openai`, `google`, and `mistral`. The chat provider (`MIMIR_LLM_CHAT_PROVIDER`) can be set independently to `openai`, `google`, `anthropic`, or `mistral`, letting you mix providers (e.g., OpenAI embeddings with Mistral chat completions). Provide the appropriate API key/endpoint per provider. Anthropic currently lacks an embeddings API, so embeddings still need to come from OpenAI, Google, or Mistral.
 
-### Separate Code and Documentation Repositories
+### Repository Configuration
 
-You can configure separate repositories for code and MDX documentation. Code repositories can contain TypeScript, Python, or any other supported language – the ingestion pipeline is language-agnostic at the repository level.
+You can configure single or multiple repositories for code and MDX documentation. Code repositories can contain TypeScript, Python, or any other supported language – the ingestion pipeline is language-agnostic at the repository level.
+
+#### Single Repository (Backward Compatible)
 
 ```bash
 # Main repository (fallback)
@@ -177,7 +183,39 @@ MIMIR_GITHUB_DOCS_DIRECTORY=docs
 MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES=docs,guides
 ```
 
-When configured, code files will be ingested from the code repository and MDX files from the docs repository. Source URLs for code files will automatically use the code repository URL.
+#### Multiple Repositories
+
+Use numbered environment variables to configure multiple repositories with per-repo settings:
+
+```bash
+# ============================================
+# MULTIPLE CODE REPOSITORIES
+# ============================================
+# Code Repository 1
+MIMIR_GITHUB_CODE_REPO_1_URL=https://github.com/user/repo1
+MIMIR_GITHUB_CODE_REPO_1_DIRECTORY=src
+MIMIR_GITHUB_CODE_REPO_1_INCLUDE_DIRECTORIES=src,lib
+MIMIR_GITHUB_CODE_REPO_1_EXCLUDE_PATTERNS=*.test.ts,test/
+
+# Code Repository 2
+MIMIR_GITHUB_CODE_REPO_2_URL=https://github.com/user/repo2
+MIMIR_GITHUB_CODE_REPO_2_DIRECTORY=packages
+
+# ============================================
+# MULTIPLE DOCS REPOSITORIES
+# ============================================
+# Docs Repository 1
+MIMIR_GITHUB_DOCS_REPO_1_URL=https://github.com/user/docs1
+MIMIR_GITHUB_DOCS_REPO_1_DIRECTORY=docs
+MIMIR_GITHUB_DOCS_REPO_1_BASE_URL=https://docs.example.com
+MIMIR_GITHUB_DOCS_REPO_1_CONTENT_PATH=content/docs
+
+# Docs Repository 2
+MIMIR_GITHUB_DOCS_REPO_2_URL=https://github.com/user/docs2
+MIMIR_GITHUB_DOCS_REPO_2_BASE_URL=https://docs2.example.com
+```
+
+**For complete configuration documentation including all environment variables, deployment guides, and examples, see the [Mimir Documentation Site](../mimir-docs/README.md).**
 
 ### Parser Configuration
 

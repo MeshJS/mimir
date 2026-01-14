@@ -119,4 +119,18 @@ export class MistralChatProvider extends BaseChatProvider {
 
         return text;
     }
+
+    protected async completeFileChunkContext(systemPrompt: string, userPrompt: string): Promise<string> {
+        const model = this.sdk(this.config.model);
+
+        const { text } = await generateText({
+            model,
+            system: systemPrompt,
+            prompt: userPrompt,
+            temperature: this.config.temperature,
+            maxOutputTokens: Math.min(250, this.config.maxOutputTokens ?? 250),
+        });
+
+        return text;
+    }
 }

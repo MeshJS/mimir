@@ -45,7 +45,7 @@ interface TargetChunkLocation {
 /** Classification of how a chunk should be handled */
 type ChunkClassification =
     | { type: "unchanged"; existingId: number }
-    | { type: "moved"; existingId: number; newFilepath: string; newChunkId: number; newSourceType: 'doc' | 'code' }
+    | { type: "moved"; existingId: number; newFilepath: string; newChunkId: number; newSourceType: 'doc' | 'code'; newGithubUrl?: string }
     | { type: "new"; chunk: UnifiedChunk; filepath: string; chunkId: number; sourceType: 'doc' | 'code'; githubUrl?: string };
 
 export interface IngestionPipelineStats {
@@ -130,7 +130,7 @@ export async function runIngestionPipeline(
             });
 
             preparedChunks.forEach((chunk, index) => {
-                const links = resolveSourceLinks(filepath, chunk.chunkTitle, appConfig, document.sourceUrl);
+                const links = resolveSourceLinks(filepath, chunk.chunkTitle, appConfig, document.sourceUrl, document.sourceRepoConfig);
                 targetState.set(chunk.checksum, {
                     filepath,
                     chunkId: index,
@@ -176,7 +176,7 @@ export async function runIngestionPipeline(
             });
 
             chunkedFile.chunks.forEach((chunk, index) => {
-                const links = resolveSourceLinks(filepath, chunk.qualifiedName, appConfig, document.sourceUrl);
+                const links = resolveSourceLinks(filepath, chunk.qualifiedName, appConfig, document.sourceUrl, document.sourceRepoConfig);
                 targetState.set(chunk.checksum, {
                     filepath,
                     chunkId: index,
@@ -270,6 +270,7 @@ export async function runIngestionPipeline(
                         newFilepath: target.filepath,
                         newChunkId: target.chunkId,
                         newSourceType: target.sourceType,
+                        newGithubUrl: target.githubUrl,
                     });
                     alreadyAssignedDbIds.add(alreadyInPlace.id);
                     assignedTargetLocations.add(targetLocationKey);
@@ -308,6 +309,7 @@ export async function runIngestionPipeline(
                             newFilepath: target.filepath,
                             newChunkId: target.chunkId,
                             newSourceType: target.sourceType,
+                            newGithubUrl: target.githubUrl,
                         });
                         alreadyAssignedDbIds.add(reusableDbChunk.id);
                         assignedTargetLocations.add(targetLocationKey);
@@ -348,53 +350,89 @@ export async function runIngestionPipeline(
         }
     }
 
-    // Find orphaned chunks (checksums not in target state)
+    // Find orphaned chunks (checksums not in target state OR github_urls not in target state)
     const activeChecksums = new Set(targetState.keys());
+    // Track active github_urls (without anchors) to detect chunks from removed files/directories
+    // A chunk is orphaned if its github_url is not in the target state, even if its checksum matches
+    const normalizeGithubUrl = (url: string | undefined): string | null => {
+        if (!url) return null;
+        // Remove anchor and normalize - compare URLs without anchors
+        return url.split('#')[0];
+    };
     
-    // Extract repository identifiers from the config to scope orphan detection
+    const activeGithubUrls = new Set<string>();
+    for (const target of targetState.values()) {
+        const normalizedUrl = normalizeGithubUrl(target.githubUrl);
+        if (normalizedUrl) {
+            activeGithubUrls.add(normalizedUrl);
+        }
+    }
+    
+    ingestionLogger.info(
+        `Orphan detection: ${activeChecksums.size} active checksum${activeChecksums.size === 1 ? "" : "s"} and ${activeGithubUrls.size} active github_url${activeGithubUrls.size === 1 ? "" : "s"} in target state.`
+    );
+    
+    // Build repository base URLs from the config to scope orphan detection
+    // Base URLs are like "https://github.com/owner/repo/blob/branch/" - we'll check if chunks' github_urls start with these
     // This prevents deleting chunks from other repositories when ingesting a new one
-    const repositoryIdentifiers = new Set<string>();
+    const repositoryBaseUrls = new Set<string>();
+    const repositoryIdentifiers = new Set<string>(); // Keep for stranded chunks
     const githubConfig = appConfig.github;
+    const branch = githubConfig.branch || 'main';
     
-    // Extract from main URL, code URL, and docs URL
-    const urlsToCheck = [
-        githubConfig.githubUrl,
-        githubConfig.codeUrl,
-        githubConfig.docsUrl,
-    ].filter((url): url is string => Boolean(url));
+    // Extract from main URL, code URL, docs URL, and all repos in arrays
+    const urlsToCheck: string[] = [];
+    
+    // Add single-repo URLs (backward compatibility)
+    if (githubConfig.githubUrl) urlsToCheck.push(githubConfig.githubUrl);
+    if (githubConfig.codeUrl) urlsToCheck.push(githubConfig.codeUrl);
+    if (githubConfig.docsUrl) urlsToCheck.push(githubConfig.docsUrl);
+    
+    // Add all code repos
+    if (githubConfig.codeRepos) {
+        for (const repo of githubConfig.codeRepos) {
+            urlsToCheck.push(repo.url);
+        }
+    }
+    
+    // Add all docs repos
+    if (githubConfig.docsRepos) {
+        for (const repo of githubConfig.docsRepos) {
+            urlsToCheck.push(repo.url);
+        }
+    }
     
     for (const url of urlsToCheck) {
         try {
             const parsed = parseGithubUrl(url);
             const repoIdentifier = `${parsed.owner}/${parsed.repo}`;
             repositoryIdentifiers.add(repoIdentifier);
+            
+            // Build base URL: https://github.com/owner/repo/blob/branch/
+            const repoBranch = parsed.branch || branch;
+            const baseUrl = `https://github.com/${parsed.owner}/${parsed.repo}/blob/${repoBranch}/`;
+            repositoryBaseUrls.add(baseUrl);
+            
+            ingestionLogger.debug(`Added repository base URL for orphan detection: ${baseUrl}`);
         } catch (error) {
             ingestionLogger.warn({ err: error, url }, "Failed to parse GitHub URL for repository scoping");
         }
     }
     
+    ingestionLogger.info(
+        `Orphan detection: Scoping to ${repositoryBaseUrls.size} repository${repositoryBaseUrls.size === 1 ? "" : "s"}: ${Array.from(repositoryIdentifiers).join(", ")}`
+    );
+    
     // Safety check: If we couldn't parse any repository URLs, skip orphan detection
     // to prevent accidentally deleting chunks from other repositories
-    if (repositoryIdentifiers.size === 0) {
+    if (repositoryBaseUrls.size === 0) {
         ingestionLogger.warn(
             "Could not parse any GitHub repository URLs. Skipping orphan chunk detection to prevent accidental deletion of chunks from other repositories."
         );
     }
     
-    // Also find and mark stranded chunks in __moving__ locations for cleanup
-    // These are chunks that were left in temporary locations from previous failed moves
-    // Only perform if we have repository identifiers to scope the operation
-    const strandedChunkIds = repositoryIdentifiers.size > 0
-        ? await store.findStrandedChunkIds(activeChecksums, repositoryIdentifiers)
-        : [];
-    
-    // Pass repository identifiers to scope orphan detection to only the repositories being ingested
-    // Only perform if we have repository identifiers to scope the operation
-    const orphanedIds = repositoryIdentifiers.size > 0
-        ? await store.findOrphanedChunkIds(activeChecksums, repositoryIdentifiers)
-        : [];
-
-    // Move chunks to new locations (two-phase to avoid conflicts)
+    // Step 1: Move chunks to new locations FIRST (before orphan detection)
+    // This ensures that chunks that moved are updated, and then we can safely detect true orphans
     const movedChunks = classifications.filter(
         (c): c is Extract<ChunkClassification, { type: "moved" }> => c.type === "moved"
     );
@@ -407,12 +445,29 @@ export async function runIngestionPipeline(
                 filepath: c.newFilepath,
                 chunkId: c.newChunkId,
                 sourceType: c.newSourceType,
+                githubUrl: c.newGithubUrl,
             }))
         );
         stats.movedChunks = movedChunks.length;
     }
 
-    // Delete orphaned chunks and stranded chunks
+    // Step 2: After moves are complete, detect orphaned chunks
+    // Orphaned chunks are those whose github_url is not in the active set
+    // This handles cases where:
+    // - Directories/files were removed from ingestion
+    // - Content moved to a different location but move detection didn't catch it
+    // - Chunks from old locations that are no longer being ingested
+    const orphanedIds = repositoryBaseUrls.size > 0
+        ? await store.findOrphanedChunkIds(activeChecksums, repositoryBaseUrls, activeGithubUrls)
+        : [];
+
+    // Step 3: Also find and mark stranded chunks in __moving__ locations for cleanup
+    // These are chunks that were left in temporary locations from previous failed moves
+    const strandedChunkIds = repositoryIdentifiers.size > 0
+        ? await store.findStrandedChunkIds(activeChecksums, repositoryIdentifiers)
+        : [];
+
+    // Step 4: Delete orphaned chunks and stranded chunks
     const chunksToDelete = [...new Set([...orphanedIds, ...strandedChunkIds])];
     if (chunksToDelete.length > 0) {
         const orphanedCount = orphanedIds.length;
@@ -489,7 +544,7 @@ export async function runIngestionPipeline(
                         if (entry.chunk.sourceType === 'doc') {
                             const contextHeader = contexts[index]?.trim() ?? "";
                             const contextualText = `${contextHeader}---${entry.chunk.chunk.chunkContent}`;
-                            const links = resolveSourceLinks(filepath, entry.chunk.chunk.chunkTitle, appConfig, document.sourceUrl);
+                            const links = resolveSourceLinks(filepath, entry.chunk.chunk.chunkTitle, appConfig, document.sourceUrl, document.sourceRepoConfig);
                             pendingEmbeddings.push({
                                 filepath,
                                 chunkId: entry.chunkId,
@@ -621,7 +676,8 @@ export async function runIngestionPipeline(
             entry.filepath,
             entry.chunkTitle,
             appConfig,
-            sourceUrl
+            sourceUrl,
+            document?.sourceRepoConfig
         );
 
         return {

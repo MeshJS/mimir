@@ -1,4 +1,4 @@
-import type { AppConfig, DocumentationConfig, GithubConfig } from "../config/types";
+import type { AppConfig, DocumentationConfig, GithubConfig, CodeRepoConfig, DocsRepoConfig } from "../config/types";
 import {
     DEFAULT_BRANCH,
     buildSourceUrl,
@@ -20,7 +20,8 @@ export function resolveSourceLinks(
     filepath: string,
     chunkTitle?: string,
     config?: AppConfig,
-    existingSourceUrl?: string
+    existingSourceUrl?: string,
+    sourceRepoConfig?: CodeRepoConfig | DocsRepoConfig
 ): SourceLinkResult {
     const sanitizedTitle = sanitizeSourceTitle(chunkTitle, filepath);
     const slug = slugifyHeading(sanitizedTitle);
@@ -31,9 +32,13 @@ export function resolveSourceLinks(
     // Fall back to computing from current GitHub config if it's not available.
     const baseGithubUrl =
         existingSourceUrl ||
-        computeGithubUrl(filepath, config?.github);
+        computeGithubUrl(filepath, config?.github, sourceRepoConfig);
 
-    const baseDocsUrl = isDocFile ? computeDocsUrl(filepath, config?.docs) : undefined;
+    // Use per-repo docs config if available, otherwise fall back to global config
+    const docsConfigForFile = isDocFile && sourceRepoConfig && 'baseUrl' in sourceRepoConfig
+        ? { baseUrl: sourceRepoConfig.baseUrl, contentPath: sourceRepoConfig.contentPath }
+        : config?.docs;
+    const baseDocsUrl = isDocFile ? computeDocsUrl(filepath, docsConfigForFile) : undefined;
 
     const githubUrl = appendSlug(baseGithubUrl, slug);
     const docsUrl = appendSlug(baseDocsUrl, slug);
@@ -52,8 +57,26 @@ export function sanitizeSourceTitle(title?: string, fallback?: string): string {
     return sanitized || (fallback ?? "");
 }
 
-function computeGithubUrl(filepath: string, githubConfig?: GithubConfig): string | undefined {
-    // Try githubUrl first, then fall back to codeUrl for TypeScript files
+function computeGithubUrl(
+    filepath: string, 
+    githubConfig?: GithubConfig,
+    sourceRepoConfig?: CodeRepoConfig | DocsRepoConfig
+): string | undefined {
+    // Use source repo config if available (from document)
+    if (sourceRepoConfig) {
+        try {
+            const parsed = parseGithubUrl(sourceRepoConfig.url);
+            const branch = githubConfig?.branch ?? parsed.branch ?? DEFAULT_BRANCH;
+            const directory = sourceRepoConfig.directory;
+            const scopedPath = joinRepoPaths(parsed.path, directory);
+            const repoPath = joinRepoPaths(scopedPath, filepath);
+            return buildSourceUrl(parsed.owner, parsed.repo, branch, repoPath);
+        } catch {
+            return undefined;
+        }
+    }
+
+    // Fall back to global config (backward compatibility)
     const url = githubConfig?.githubUrl || githubConfig?.codeUrl;
     if (!url) {
         return undefined;

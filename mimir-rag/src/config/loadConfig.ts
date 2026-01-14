@@ -1,6 +1,6 @@
 import { config as loadDotenv } from "dotenv";
 import path from "node:path";
-import type { AppConfig, LLMProviderName } from "./types";
+import type { AppConfig, LLMProviderName, CodeRepoConfig, DocsRepoConfig } from "./types";
 
 const PACKAGE_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -45,6 +45,115 @@ export function resolveConfigPath(providedPath?: string): string {
     }
 
     return path.join(PACKAGE_ROOT, ".env");
+}
+
+/**
+ * Parse numbered code repository environment variables
+ * Scans for MIMIR_GITHUB_CODE_REPO_{N}_URL patterns and collects all related config
+ */
+function parseCodeRepos(): CodeRepoConfig[] {
+    const repos: CodeRepoConfig[] = [];
+    const repoNumbers = new Set<number>();
+
+    // Find all repo numbers by scanning for _REPO_{N}_URL patterns
+    for (const key in process.env) {
+        const match = key.match(/^MIMIR_GITHUB_CODE_REPO_(\d+)_URL$/);
+        if (match) {
+            repoNumbers.add(parseInt(match[1], 10));
+        }
+    }
+
+    // Sort repo numbers to process in order
+    const sortedNumbers = Array.from(repoNumbers).sort((a, b) => a - b);
+
+    // Build config for each repo
+    for (const num of sortedNumbers) {
+        const url = getEnv(`MIMIR_GITHUB_CODE_REPO_${num}_URL`, false);
+        if (!url) {
+            continue; // Skip if URL is missing
+        }
+
+        const directory = getEnv(`MIMIR_GITHUB_CODE_REPO_${num}_DIRECTORY`, false);
+        const includeDirsStr = getEnv(`MIMIR_GITHUB_CODE_REPO_${num}_INCLUDE_DIRECTORIES`, false);
+        const excludePatternsStr = getEnv(`MIMIR_GITHUB_CODE_REPO_${num}_EXCLUDE_PATTERNS`, false);
+
+        const repo: CodeRepoConfig = {
+            url,
+        };
+
+        if (directory) {
+            repo.directory = directory;
+        }
+
+        if (includeDirsStr) {
+            repo.includeDirectories = includeDirsStr.split(",").map(p => p.trim()).filter(Boolean);
+        }
+
+        if (excludePatternsStr) {
+            repo.excludePatterns = excludePatternsStr.split(",").map(p => p.trim()).filter(Boolean);
+        }
+
+        repos.push(repo);
+    }
+
+    return repos;
+}
+
+/**
+ * Parse numbered docs repository environment variables
+ * Scans for MIMIR_GITHUB_DOCS_REPO_{N}_URL patterns and collects all related config
+ */
+function parseDocsRepos(): DocsRepoConfig[] {
+    const repos: DocsRepoConfig[] = [];
+    const repoNumbers = new Set<number>();
+
+    // Find all repo numbers by scanning for _REPO_{N}_URL patterns
+    for (const key in process.env) {
+        const match = key.match(/^MIMIR_GITHUB_DOCS_REPO_(\d+)_URL$/);
+        if (match) {
+            repoNumbers.add(parseInt(match[1], 10));
+        }
+    }
+
+    // Sort repo numbers to process in order
+    const sortedNumbers = Array.from(repoNumbers).sort((a, b) => a - b);
+
+    // Build config for each repo
+    for (const num of sortedNumbers) {
+        const url = getEnv(`MIMIR_GITHUB_DOCS_REPO_${num}_URL`, false);
+        if (!url) {
+            continue; // Skip if URL is missing
+        }
+
+        const directory = getEnv(`MIMIR_GITHUB_DOCS_REPO_${num}_DIRECTORY`, false);
+        const includeDirsStr = getEnv(`MIMIR_GITHUB_DOCS_REPO_${num}_INCLUDE_DIRECTORIES`, false);
+        const baseUrl = getEnv(`MIMIR_GITHUB_DOCS_REPO_${num}_BASE_URL`, false);
+        const contentPath = getEnv(`MIMIR_GITHUB_DOCS_REPO_${num}_CONTENT_PATH`, false);
+
+        const repo: DocsRepoConfig = {
+            url,
+        };
+
+        if (directory) {
+            repo.directory = directory;
+        }
+
+        if (includeDirsStr) {
+            repo.includeDirectories = includeDirsStr.split(",").map(p => p.trim()).filter(Boolean);
+        }
+
+        if (baseUrl) {
+            repo.baseUrl = baseUrl;
+        }
+
+        if (contentPath) {
+            repo.contentPath = contentPath;
+        }
+
+        repos.push(repo);
+    }
+
+    return repos;
 }
 
 export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
@@ -105,20 +214,70 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
             bm25MatchCount: getEnvNumber("MIMIR_SUPABASE_BM25_MATCH_COUNT", 10),
             enableHybridSearch: getEnvBoolean("MIMIR_SUPABASE_ENABLE_HYBRID_SEARCH", true),
         },
-        github: {
-            githubUrl: getEnv("MIMIR_GITHUB_URL", false) ?? "",
-            directory: getEnv("MIMIR_GITHUB_DIRECTORY", false),
-            includeDirectories: getEnv("MIMIR_GITHUB_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
-            codeUrl: getEnv("MIMIR_GITHUB_CODE_URL", false),
-            codeDirectory: getEnv("MIMIR_GITHUB_CODE_DIRECTORY", false),
-            codeIncludeDirectories: getEnv("MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
-            docsUrl: getEnv("MIMIR_GITHUB_DOCS_URL", false),
-            docsDirectory: getEnv("MIMIR_GITHUB_DOCS_DIRECTORY", false),
-            docsIncludeDirectories: getEnv("MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
-            branch: getEnv("MIMIR_GITHUB_BRANCH", false) ?? "main",
-            token: getEnv("MIMIR_GITHUB_TOKEN", false),
-            outputDir: getEnv("MIMIR_GITHUB_OUTPUT_DIR", false) ?? "./tmp/github-cache",
-        },
+        github: (() => {
+            const githubUrl = getEnv("MIMIR_GITHUB_URL", false) ?? "";
+            const codeUrl = getEnv("MIMIR_GITHUB_CODE_URL", false);
+            const docsUrl = getEnv("MIMIR_GITHUB_DOCS_URL", false);
+
+            // Check for single-repo config (backward compatibility)
+            const hasSingleCodeRepo = !!codeUrl;
+            const hasSingleDocsRepo = !!docsUrl;
+
+            // Parse multiple repos if single-repo vars are not set
+            let codeRepos: CodeRepoConfig[] | undefined;
+            let docsRepos: DocsRepoConfig[] | undefined;
+
+            if (!hasSingleCodeRepo) {
+                const parsedCodeRepos = parseCodeRepos();
+                if (parsedCodeRepos.length > 0) {
+                    codeRepos = parsedCodeRepos;
+                }
+            } else {
+                // Convert single-repo config to array format for consistency
+                const codeDirectory = getEnv("MIMIR_GITHUB_CODE_DIRECTORY", false);
+                const codeIncludeDirs = getEnv("MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES", false);
+                codeRepos = [{
+                    url: codeUrl,
+                    directory: codeDirectory,
+                    includeDirectories: codeIncludeDirs?.split(",").map(p => p.trim()).filter(Boolean),
+                }];
+            }
+
+            if (!hasSingleDocsRepo) {
+                const parsedDocsRepos = parseDocsRepos();
+                if (parsedDocsRepos.length > 0) {
+                    docsRepos = parsedDocsRepos;
+                }
+            } else {
+                // Convert single-repo config to array format for consistency
+                const docsDirectory = getEnv("MIMIR_GITHUB_DOCS_DIRECTORY", false);
+                const docsIncludeDirs = getEnv("MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES", false);
+                docsRepos = [{
+                    url: docsUrl,
+                    directory: docsDirectory,
+                    includeDirectories: docsIncludeDirs?.split(",").map(p => p.trim()).filter(Boolean),
+                }];
+            }
+
+            return {
+                githubUrl,
+                directory: getEnv("MIMIR_GITHUB_DIRECTORY", false),
+                includeDirectories: getEnv("MIMIR_GITHUB_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
+                // Backward compatibility: keep single-repo fields
+                codeUrl,
+                codeDirectory: getEnv("MIMIR_GITHUB_CODE_DIRECTORY", false),
+                codeIncludeDirectories: getEnv("MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
+                docsUrl,
+                docsDirectory: getEnv("MIMIR_GITHUB_DOCS_DIRECTORY", false),
+                docsIncludeDirectories: getEnv("MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
+                // Multiple repos support
+                codeRepos,
+                docsRepos,
+                branch: getEnv("MIMIR_GITHUB_BRANCH", false) ?? "main",
+                token: getEnv("MIMIR_GITHUB_TOKEN", false),
+                outputDir: getEnv("MIMIR_GITHUB_OUTPUT_DIR", false) ?? "./tmp/github-cache",
+            };
+        })(),
         parser: {
             extractVariables: getEnvBoolean("MIMIR_EXTRACT_VARIABLES", false),
             extractMethods: getEnvBoolean("MIMIR_EXTRACT_METHODS", true),

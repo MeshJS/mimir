@@ -237,7 +237,7 @@ export class SupabaseVectorStore {
         this.logger.info(`Reordered ${updates.length} chunk${updates.length === 1 ? "" : "s"}.`);
     }
 
-    async moveChunksAtomic(moves: Array<{ id: number; filepath: string; chunkId: number; sourceType?: 'doc' | 'code' | 'mdx' | 'typescript' }>): Promise<void> {
+    async moveChunksAtomic(moves: Array<{ id: number; filepath: string; chunkId: number; sourceType?: 'doc' | 'code' | 'mdx' | 'typescript'; githubUrl?: string }>): Promise<void> {
         if (moves.length === 0) {
             return;
         }
@@ -329,6 +329,9 @@ export class SupabaseVectorStore {
             if (move.sourceType) {
                 updateData.source_type = move.sourceType;
             }
+            if (move.githubUrl !== undefined) {
+                updateData.github_url = move.githubUrl;
+            }
 
             const { error } = await this.client
                 .from(this.config.table)
@@ -363,64 +366,180 @@ export class SupabaseVectorStore {
      */
     async findOrphanedChunkIds(
         activeChecksums: Set<string>,
-        repositoryIdentifiers?: Set<string>
+        repositoryBaseUrls?: Set<string>, // Base URLs like "https://github.com/owner/repo/blob/branch/"
+        activeGithubUrls?: Set<string>
     ): Promise<number[]> {
         // Fetch all chunks (we'll filter by repository in JavaScript for reliability)
-        const { data, error } = await this.client
-            .from(this.config.table)
-            .select("id, checksum, github_url");
-
-        if (error) {
-            this.logger.error(`Failed to fetch chunks for orphan detection: ${error.message}`);
-            throw new Error(`Failed to fetch chunks for orphan detection: ${error.message}`);
+        // Also fetch source_type to help with debugging
+        // Note: Supabase has a default limit of 1000 rows, so we need to fetch in batches
+        let allData: Array<{ id: number; checksum: string; github_url: string | null; filepath: string; source_type: string | null }> = [];
+        let hasMore = true;
+        let offset = 0;
+        const batchSize = 1000;
+        
+        while (hasMore) {
+            const { data, error: fetchError } = await this.client
+                .from(this.config.table)
+                .select("id, checksum, github_url, filepath, source_type")
+                .range(offset, offset + batchSize - 1);
+            
+            if (fetchError) {
+                this.logger.error(`Failed to fetch chunks for orphan detection: ${fetchError.message}`);
+                throw new Error(`Failed to fetch chunks for orphan detection: ${fetchError.message}`);
+            }
+            
+            if (!data || data.length === 0) {
+                hasMore = false;
+            } else {
+                allData = allData.concat(data);
+                hasMore = data.length === batchSize; // If we got a full batch, there might be more
+                offset += batchSize;
+            }
         }
+        
+        const data = allData;
 
         if (!data || data.length === 0) {
             return [];
         }
+        
+        // Normalize github_urls for comparison - remove anchors
+        const normalizeGithubUrl = (url: string | null | undefined): string | null => {
+            if (!url) return null;
+            // Remove anchor and normalize - compare URLs without anchors
+            return url.split('#')[0];
+        };
+        
+        // If repository base URLs are provided, filter chunks to only those from configured repositories
+        // This ensures we only delete chunks from repositories we're currently ingesting
+        let chunksToCheck = data;
+        if (repositoryBaseUrls && repositoryBaseUrls.size > 0) {
+            const baseUrlsArray = Array.from(repositoryBaseUrls);
+            this.logger.info(`Filtering chunks by repository base URLs: ${baseUrlsArray.map(url => `"${url}"`).join(", ")}`);
+            
+            chunksToCheck = data.filter(row => {
+                if (!row.github_url) return false;
+                const normalizedUrl = normalizeGithubUrl(row.github_url);
+                if (!normalizedUrl) return false;
+                // Check if this chunk's github_url starts with any of the configured repository base URLs
+                return baseUrlsArray.some(baseUrl => normalizedUrl.startsWith(baseUrl));
+            });
+            this.logger.info(`Filtered ${data.length} total chunks to ${chunksToCheck.length} chunks from configured repositories.`);
+            
+            // Debug: show sample chunks that were filtered out (if any)
+            if (chunksToCheck.length < data.length) {
+                const filteredOut = data.filter(row => {
+                    if (!row.github_url) return true;
+                    const normalizedUrl = normalizeGithubUrl(row.github_url);
+                    if (!normalizedUrl) return true;
+                    return !baseUrlsArray.some(baseUrl => normalizedUrl.startsWith(baseUrl));
+                });
+                if (filteredOut.length > 0) {
+                    this.logger.debug(`Sample chunks filtered out (not from configured repos): ${filteredOut.slice(0, 3).map(c => c.github_url?.substring(0, 80)).join(", ")}`);
+                }
+            }
+        }
 
         // If no active checksums, all chunks in the scoped repositories are orphaned
         if (activeChecksums.size === 0) {
-            if (repositoryIdentifiers && repositoryIdentifiers.size > 0) {
+            if (repositoryBaseUrls && repositoryBaseUrls.size > 0) {
                 // Filter to only chunks from scoped repositories
-                return data
-                    .filter((row) => {
-                        if (!row.github_url) return false;
-                        const match = row.github_url.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-                        if (!match) return false;
-                        const repoIdentifier = `${match[1]}/${match[2]}`;
-                        return repositoryIdentifiers.has(repoIdentifier);
-                    })
-                    .map((row) => row.id);
+                return chunksToCheck.map((row) => row.id);
             }
             // Backward compatible: if no repository scope, all chunks are orphaned
             return data.map((row) => row.id);
         }
 
-        // Filter chunks: orphaned if checksum is not active AND belongs to scoped repositories
+        // Filter chunks: orphaned if (checksum is not active OR filepath is not active) AND belongs to scoped repositories
+        // This handles the case where the same content exists in multiple files - if a filepath is removed,
+        // chunks from that filepath should be orphaned even if the same content exists elsewhere
         const orphanedIds: number[] = [];
-        for (const row of data) {
-            // Only consider chunks that don't have active checksums
-            if (!activeChecksums.has(row.checksum)) {
-                // If repository identifiers are provided, verify this chunk belongs to one of them
-                if (repositoryIdentifiers && repositoryIdentifiers.size > 0) {
-                    const githubUrl = row.github_url;
-                    if (githubUrl) {
-                        // Extract owner/repo from github_url (format: https://github.com/owner/repo/...)
-                        const match = githubUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-                        if (match) {
-                            const repoIdentifier = `${match[1]}/${match[2]}`;
-                            if (repositoryIdentifiers.has(repoIdentifier)) {
-                                orphanedIds.push(row.id);
-                            }
-                        }
-                    }
-                } else {
-                    // No repository scope - backward compatible behavior
+        let skippedNoGithubUrl = 0;
+        let orphanedByGithubUrl = 0;
+        let orphanedByChecksum = 0;
+        
+        // Create normalized active github_urls set for comparison
+        const normalizedActiveGithubUrls = activeGithubUrls 
+            ? new Set(Array.from(activeGithubUrls).map(normalizeGithubUrl).filter((url): url is string => url !== null))
+            : undefined;
+        
+        // Debug: log sample active github_urls for comparison
+        if (normalizedActiveGithubUrls && normalizedActiveGithubUrls.size > 0) {
+            const sampleActive = Array.from(normalizedActiveGithubUrls).slice(0, 5);
+            this.logger.info(`Orphan detection: Sample active github_urls: ${sampleActive.map(url => `"${url}"`).join(", ")}`);
+        }
+        
+        // Track examples for debugging
+        let orphanedByGithubUrlCount = 0;
+        let orphanedByChecksumCount = 0;
+        const orphanExamples: Array<{ url: string; checksumInActive: boolean; urlInActive: boolean }> = [];
+        
+        for (const row of chunksToCheck) {
+            // A chunk is orphaned if its github_url (without anchor) is not in active github_urls
+            // This means the file location was removed from ingestion.
+            // 
+            // Note: We check github_url (not just checksum) because:
+            // - If the same content exists elsewhere (same checksum), move detection should have updated it
+            // - If move detection didn't catch it (e.g., moved to different repo), we still delete the old location
+            // - If the content was completely removed, both checksum and github_url will be missing
+            const normalizedDbGithubUrl = normalizeGithubUrl(row.github_url);
+            const isOrphanedByGithubUrl = normalizedActiveGithubUrls && normalizedDbGithubUrl && !normalizedActiveGithubUrls.has(normalizedDbGithubUrl);
+            const isOrphanedByChecksum = !activeChecksums.has(row.checksum);
+            
+            // Orphan if github_url is not in active set (location removed from ingestion)
+            // OR if checksum is not in active set (content completely removed)
+            const isOrphaned = isOrphanedByGithubUrl || isOrphanedByChecksum;
+            
+            // Collect examples for debugging (first 10 orphaned chunks)
+            if (isOrphaned && orphanExamples.length < 10) {
+                orphanExamples.push({
+                    url: row.github_url || '',
+                    checksumInActive: activeChecksums.has(row.checksum),
+                    urlInActive: normalizedActiveGithubUrls ? normalizedActiveGithubUrls.has(normalizedDbGithubUrl || '') : false,
+                });
+            }
+            
+            // Track orphan reasons for logging
+            if (isOrphanedByGithubUrl && !isOrphanedByChecksum) {
+                // github_url missing but checksum exists - file location removed, content exists elsewhere
+                orphanedByGithubUrlCount++;
+            }
+            if (isOrphanedByChecksum && !isOrphanedByGithubUrl) {
+                // Checksum missing but github_url exists - content removed entirely
+                orphanedByChecksumCount++;
+            }
+            if (isOrphanedByGithubUrl && isOrphanedByChecksum) {
+                // Both missing - file and content removed
+                orphanedByGithubUrlCount++;
+            }
+            
+            if (isOrphaned) {
+                // Chunk is already filtered to configured repositories, so add it to orphaned list
                 orphanedIds.push(row.id);
-                }
+            } else if (!row.github_url) {
+                skippedNoGithubUrl++;
             }
         }
+
+        if (orphanedByGithubUrlCount > 0) {
+            this.logger.info(`Found ${orphanedByGithubUrlCount} chunk${orphanedByGithubUrlCount === 1 ? "" : "s"} orphaned by github_url (file removed from ingestion).`);
+        }
+        if (orphanedByChecksumCount > 0) {
+            this.logger.info(`Found ${orphanedByChecksumCount} chunk${orphanedByChecksumCount === 1 ? "" : "s"} orphaned by checksum (content removed).`);
+        }
+        if (skippedNoGithubUrl > 0) {
+            this.logger.warn(`Skipped ${skippedNoGithubUrl} chunk${skippedNoGithubUrl === 1 ? "" : "s"} without github_url during orphan detection.`);
+        }
+        
+        if (orphanExamples.length > 0) {
+            this.logger.info(`Sample orphaned chunks (first 5):`);
+            orphanExamples.slice(0, 5).forEach((ex, idx) => {
+                this.logger.info(`  ${idx + 1}. URL: "${ex.url.substring(0, 100)}..."`);
+                this.logger.info(`     Checksum in active: ${ex.checksumInActive}, URL in active: ${ex.urlInActive}`);
+            });
+        }
+
+        this.logger.info(`Found ${orphanedIds.length} orphaned chunk${orphanedIds.length === 1 ? "" : "s"} to delete (${orphanedByGithubUrlCount} by github_url, ${orphanedByChecksumCount} by checksum).`);
 
         return orphanedIds;
     }
