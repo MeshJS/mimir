@@ -1,0 +1,184 @@
+---
+title: MCP Integration
+description: Connect AI assistants to Mimir using Model Context Protocol
+---
+
+import { Separator } from "@/components/ui/separator";
+
+## What is MCP?
+
+[Model Context Protocol (MCP)](https://modelcontextprotocol.io/) is an open protocol that enables AI assistants to securely access external data sources and tools. Mimir provides an MCP server that connects your AI coding assistant directly to your documentation and codebase.
+
+## Features
+
+- **Configurable Backend**: Set your own Mimir RAG backend URL via environment variables
+- **Customizable Server Name**: Configure the MCP server name to match your organization
+- **Fast Semantic Search**: Direct access to your documentation
+- **No Additional LLM Calls**: Returns document chunks directly
+- **Works with Popular Assistants**: Claude Code, VS Code, Claude Desktop, and more
+
+## Important Notes
+
+**Embeddings**: The Mimir backend uses its own embedding model. You cannot use a different LLM provider for embeddings as this would cause compatibility issues.
+
+**Chat Completions**: When using chat completions via the API, you'll need to provide your own LLM API keys (OpenAI, Anthropic, etc.) for the completion model. The embedding model is handled by the backend.
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## Installation
+
+### VS Code / Claude Code
+
+1. Open Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`)
+2. Select "MCP: Open User Configuration"
+3. Add:
+
+```json
+{
+  "mcpServers": {
+    "mimir": {
+      "command": "npx",
+      "args": ["-y", "@your-org/your-mcp-name"],
+      "env": {
+        "MIMIR_API_URL": "https://your-backend-url.com",
+        "MCP_SERVER_NAME": "Your Custom MCP Server Name"
+      }
+    }
+  }
+}
+```
+
+**Note**: Replace `@your-org/your-mcp-name` with your published npm package name, and set your backend URL and server name.
+
+4. Restart VS Code or reload the MCP extension
+
+### Claude Desktop
+
+Edit `claude_desktop_config.json`:
+
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`  
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "mimir": {
+      "command": "npx",
+      "args": ["-y", "@your-org/your-mcp-name"],
+      "env": {
+        "MIMIR_API_URL": "https://your-backend-url.com",
+        "MCP_SERVER_NAME": "Your Custom MCP Server Name"
+      }
+    }
+  }
+}
+```
+
+**Note**: Replace `@your-org/your-mcp-name` with your published npm package name, and set your backend URL and server name.
+
+### Local Development
+
+For local development:
+
+1. **Clone and Build:**
+```bash
+cd your-mcp-directory
+npm install
+npm run build
+```
+
+2. **Set Backend URL:**
+Set the `MIMIR_API_URL` environment variable:
+```bash
+export MIMIR_API_URL=http://localhost:3000
+export MCP_SERVER_NAME="My Local MCP Server"
+```
+
+3. **Add to MCP Config:**
+```json
+{
+  "mcpServers": {
+    "mimir": {
+      "command": "node",
+      "args": ["/absolute/path/to/your-mcp/dist/index.js"],
+      "env": {
+        "MIMIR_API_URL": "http://localhost:3000",
+        "MCP_SERVER_NAME": "My Local MCP Server"
+      }
+    }
+  }
+}
+```
+
+## Using the askDocs Tool
+
+Once configured, your AI assistant has access to the `askDocs` tool. Simply ask questions:
+
+- "Find documentation about authentication"
+- "Search the docs for API endpoint examples"
+- "What does the documentation say about error handling?"
+
+The AI assistant will automatically:
+1. Invoke the `askDocs` tool
+2. Retrieve relevant documentation chunks
+3. Synthesize an answer based on the retrieved content
+
+## Tool Parameters
+
+The `askDocs` tool accepts these parameters:
+
+- **question** (required): Your documentation search query
+- **matchCount** (optional): Number of chunks to retrieve (default: 10)
+- **similarityThreshold** (optional): Minimum similarity score (default: 0.2)
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## How It Works
+
+1. **AI Assistant** receives your question
+2. **MCP Server** (your custom MCP package) receives the tool invocation
+3. **Backend** (mimir-rag) performs semantic search using embeddings
+4. **Document Chunks** are returned with content and metadata
+5. **AI Assistant** synthesizes an answer from the retrieved content
+
+## Prerequisites
+
+- A running [mimir-rag](/docs/deployment) server with ingested documentation
+- Node.js 20 or later
+- An AI assistant that supports MCP
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## Troubleshooting
+
+### Connection Issues
+
+If the MCP server can't connect:
+
+1. Verify mimir-rag is running: `curl https://your-backend-url.com/health`
+2. For local development, ensure `MIMIR_API_URL` is set to `http://localhost:3000`
+3. Check firewall and network settings
+4. Verify the `MIMIR_API_URL` or `MCP_BACKEND_URL` environment variable is correctly set in your MCP configuration
+
+### Tool Not Available
+
+If your AI assistant doesn't see the tool:
+
+1. Restart your AI assistant
+2. Verify MCP configuration JSON is valid
+3. Check MCP logs for errors
+4. Ensure the path to `dist/index.js` is absolute (for local dev)
+
+### Empty Results
+
+If searches return no results:
+
+1. Verify documentation has been ingested
+2. Check embeddings were created successfully
+3. Try lowering `similarityThreshold` for broader matches

@@ -1,0 +1,76 @@
+---
+title: Introduction
+description: Welcome to Mimir documentation
+---
+
+Welcome to Mimir! Mimir is a **contextual RAG** system that makes your codebase and documentation queryable by AI assistants.
+
+## What is Mimir?
+
+Mimir ingests documentation (MDX) and source code (TypeScript, Python, and more) from GitHub repositories into a Supabase vector store. Unlike basic RAG, contextual RAG provides rich context around each code entity, including full file content, imports, and surrounding code.
+
+## Key Features
+
+- **Contextual RAG**: Rich context around code entities for better understanding
+- **Multiple Repository Support**: Ingest from multiple code and documentation repositories
+- **Language Support**: TypeScript, Python, and easily extensible to more languages
+- **MCP Integration**: Connect AI assistants via Model Context Protocol
+- **OpenAI-Compatible API**: Works with OpenAI-compatible SDKs and clients
+- **Automatic Entity Extraction**: Extracts functions, classes, interfaces, and more
+
+## Quick Start
+
+Get started in minutes:
+
+1. [Set up Supabase](/docs/getting-started#1-set-up-supabase)
+2. [Configure mimir-rag](/docs/getting-started#2-configure-mimir-rag)
+3. [Start the server](/docs/getting-started#4-start-the-server)
+4. [Ingest your first repository](/docs/getting-started#5-trigger-ingestion)
+
+See the [Getting Started](/docs/getting-started) guide for detailed instructions.
+
+## Documentation
+
+<Cards>
+  <Card title="Getting Started" href="/docs/getting-started" description="Quick setup guide to get Mimir running" />
+  <Card title="Configuration" href="/docs/configuration" description="Complete guide to configuring Mimir" />
+  <Card title="Deployment" href="/docs/deployment" description="Deploy Mimir to production" />
+  <Card title="API Reference" href="/docs/api-reference" description="Complete API documentation" />
+  <Card title="MCP Integration" href="/docs/mcp" description="Connect AI assistants to Mimir" />
+</Cards>
+
+## How It Works
+
+```
+┌─────────────────────┐
+│   GitHub Repo       │
+│   (Documentation)   │
+└──────────┬──────────┘
+           │
+           │ Webhook / Manual Ingest
+           ▼
+┌─────────────────────┐
+│   mimir-rag         │
+│   - Ingestion       │
+│   - Chunking        │
+│   - Embedding       │
+│   - Vector Store    │
+└──────────┬──────────┘
+           │
+           │ /mcp/ask endpoint
+           ▼
+┌─────────────────────┐       ┌─────────────────────┐
+│   Your MCP Server   │◄──────┤  AI Assistant       │
+│   (Custom Package)  │       │  - Claude Code      │
+└─────────────────────┘       │  - VSCode           │
+                              │  - Claude Desktop   │
+                              └─────────────────────┘
+```
+
+## Use Cases
+
+- **AI-Powered Code Assistant**: Query your codebase in real-time
+- **Documentation Search**: Make your docs instantly queryable
+- **Codebase Understanding**: Index entire codebases with full context
+- **Internal Knowledge Base**: Index wikis, API docs, and technical documentation
+- **Developer Onboarding**: Help new developers find information quickly

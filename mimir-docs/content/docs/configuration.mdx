@@ -1,0 +1,389 @@
+---
+title: Configuration
+description: Complete guide to configuring Mimir with clear, organized environment variables
+---
+
+import { Separator } from "@/components/ui/separator";
+import { InfoCard } from "@/components/ui/info-card";
+
+Configuration in Mimir is done through environment variables in a `.env` file. This guide organizes them by required and optional settings.
+
+## Configuration Overview
+
+Mimir uses environment variables organized into these categories:
+
+1. **Server Configuration** - API keys and server settings
+2. **Supabase Configuration** - Database connection and settings
+3. **GitHub Repositories** - Where to fetch code and documentation
+4. **Parser Configuration** - What to extract from code
+5. **LLM Configuration** - Embedding and chat model settings
+
+## 1. Server Configuration
+
+#### Server API Key (required)
+
+```tsx
+MIMIR_SERVER_API_KEY=your-generated-api-key
+```
+
+This is your server's authentication key. It protects your API endpoints from unauthorized access. Generate one using `npm run generate-apikey` in the mimir-rag directory.
+
+#### GitHub Webhook Secret (optional)
+
+```tsx
+MIMIR_SERVER_GITHUB_WEBHOOK_SECRET=your-webhook-secret
+```
+
+When GitHub sends webhook events (like when code is pushed), this secret verifies that the request actually came from GitHub. Only needed if you want automatic ingestion when code changes in your repository.
+
+#### Fallback Ingest Interval (optional)
+
+```tsx
+MIMIR_SERVER_FALLBACK_INGEST_INTERVAL_MINUTES=60
+```
+
+If webhooks fail or aren't configured, this sets up a scheduled backup that periodically re-ingests your repositories. Useful for keeping your index fresh automatically.
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## 2. Supabase Configuration
+
+#### Supabase URL (required)
+
+```tsx
+MIMIR_SUPABASE_URL=https://your-project.supabase.co
+```
+
+Your Supabase project's API endpoint. Mimir uses it to connect to your database and store/query vector embeddings. Find this in your Supabase dashboard under Project Settings → API → "Project URL".
+
+#### Supabase Service Role Key (required)
+
+```tsx
+MIMIR_SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+This key gives Mimir full access to your Supabase database. It's needed to create tables, insert embeddings, and perform vector searches. Find it in Supabase dashboard → Project Settings → API → "service_role" key (not the "anon" key).
+
+**⚠️ Security Note:** This key has full database access. Never commit it to version control or expose it publicly.
+
+#### Supabase Table (optional)
+
+```tsx
+MIMIR_SUPABASE_TABLE=docs
+```
+
+**Default:** `"docs"`
+
+Specifies which table in your Supabase database stores the document chunks. Use different table names if you have multiple Mimir instances or want to separate different documentation sets.
+
+#### Supabase Database Password (optional)
+
+```tsx
+MIMIR_SUPABASE_DB_PASSWORD=your-database-password
+```
+
+Mimir can automatically construct the full database connection URL from your Supabase URL and password. If provided, Mimir combines this with `MIMIR_SUPABASE_URL` to create `DATABASE_URL` automatically.
+
+#### Similarity Threshold (optional)
+
+```tsx
+MIMIR_SUPABASE_SIMILARITY_THRESHOLD=0.2
+```
+
+**Default:** `0.2`  
+**Range:** 0.0 to 1.0
+
+Controls how similar a document chunk must be to your query to be included in results. Lower values (0.1-0.3) return more results but may include less relevant content. Higher values (0.5-0.8) return fewer, more precise matches.
+
+#### Match Count (optional)
+
+```tsx
+MIMIR_SUPABASE_MATCH_COUNT=10
+```
+
+**Default:** `10`
+
+Limits how many document chunks are returned per query. More chunks provide more context but increase API costs and response time. Fewer chunks are faster but may miss relevant information.
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## 3. GitHub Repository Configuration
+
+Mimir fetches code and documentation from GitHub repositories. You can configure single or multiple repositories.
+
+### Single Repository
+
+For most projects, start with a single repository:
+
+```tsx
+MIMIR_GITHUB_URL=https://github.com/your-org/your-repo
+MIMIR_GITHUB_BRANCH=main
+MIMIR_GITHUB_TOKEN=ghp_your_token_here
+```
+
+<InfoCard>
+**MIMIR_GITHUB_URL:** The main repository URL. Mimir will fetch both code and documentation from here.
+</InfoCard>
+
+<InfoCard>
+**MIMIR_GITHUB_BRANCH:** Which branch to fetch from. Defaults to `main` if not specified.
+</InfoCard>
+
+<InfoCard>
+**MIMIR_GITHUB_TOKEN:** GitHub personal access token. Required for private repositories or to avoid rate limits on public repos.
+</InfoCard>
+
+### Separate Code and Documentation Repos
+
+If your code and docs are in different repositories:
+
+```tsx
+# Code repository (TypeScript, Python, etc.)
+MIMIR_GITHUB_CODE_URL=https://github.com/your-org/code-repo
+MIMIR_GITHUB_CODE_DIRECTORY=src
+MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES=src,lib
+
+# Documentation repository (MDX files)
+MIMIR_GITHUB_DOCS_URL=https://github.com/your-org/docs-repo
+MIMIR_GITHUB_DOCS_DIRECTORY=docs
+MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES=docs,guides
+```
+
+<InfoCard>
+**DIRECTORY:** Base directory to start from. If your code is in `src/`, set this to `src` to avoid indexing root-level files.
+</InfoCard>
+
+<InfoCard>
+**INCLUDE_DIRECTORIES:** Comma-separated list of directories to include. Useful when you only want specific folders indexed.
+</InfoCard>
+
+### Multiple Repositories
+
+For larger projects with multiple codebases or documentation sources:
+
+```tsx
+# ============================================
+# CODE REPOSITORIES
+# ============================================
+MIMIR_GITHUB_CODE_REPO_1_URL=https://github.com/your-org/repo1
+MIMIR_GITHUB_CODE_REPO_1_DIRECTORY=src
+MIMIR_GITHUB_CODE_REPO_1_INCLUDE_DIRECTORIES=src,lib
+MIMIR_GITHUB_CODE_REPO_1_EXCLUDE_PATTERNS=*.test.ts,test/
+
+MIMIR_GITHUB_CODE_REPO_2_URL=https://github.com/your-org/repo2
+MIMIR_GITHUB_CODE_REPO_2_DIRECTORY=packages
+
+# ============================================
+# DOCUMENTATION REPOSITORIES
+# ============================================
+MIMIR_GITHUB_DOCS_REPO_1_URL=https://github.com/your-org/docs1
+MIMIR_GITHUB_DOCS_REPO_1_DIRECTORY=docs
+MIMIR_GITHUB_DOCS_REPO_1_BASE_URL=https://docs.example.com
+MIMIR_GITHUB_DOCS_REPO_1_CONTENT_PATH=content/docs
+
+MIMIR_GITHUB_DOCS_REPO_2_URL=https://github.com/your-org/docs2
+MIMIR_GITHUB_DOCS_REPO_2_BASE_URL=https://docs2.example.com
+```
+
+<InfoCard>
+**EXCLUDE_PATTERNS:** Comma-separated patterns to skip. Useful for excluding test files, build artifacts, or generated code.
+</InfoCard>
+
+<InfoCard>
+**BASE_URL (docs only):** The public URL where your documentation is hosted. Used to generate clickable links in search results.
+</InfoCard>
+
+<InfoCard>
+**CONTENT_PATH (docs only):** The path prefix in your repository where content lives. Used to correctly map repository paths to documentation URLs.
+</InfoCard>
+
+<Separator />
+
+## 4. Parser Configuration
+
+Control what code entities get extracted and indexed from your codebase.
+
+#### Extract Variables (optional)
+
+```tsx
+MIMIR_EXTRACT_VARIABLES=false
+```
+
+**Default:** `false`
+
+Controls whether top-level variable declarations are extracted as separate entities. If `false`, only functions, classes, and interfaces are indexed. If `true`, variables like `export const config = {...}` are also indexed. Useful if you have important configuration objects or constants that developers frequently search for.
+
+**Note:** Exported `const` functions (like `export const myFunction = () => {}`) are always extracted regardless of this setting.
+
+#### Extract Methods (optional)
+
+```tsx
+MIMIR_EXTRACT_METHODS=true
+```
+
+**Default:** `true`
+
+Controls whether class methods are extracted as separate entities. If `true`, each method becomes its own searchable entity. If `false`, only the class itself is indexed. Disable if you have many small methods and want to reduce index size, or if you prefer searching at the class level.
+
+#### Exclude Patterns (optional)
+
+```tsx
+MIMIR_EXCLUDE_PATTERNS=*.test.ts,*.spec.ts,test/,__tests__/,tests/
+```
+
+Prevents test files and other non-production code from being indexed. This keeps your search results focused on actual implementation code and reduces index size.
+
+**Patterns supported:**
+- File patterns: `*.test.ts`, `*.spec.ts`, `*.d.ts`
+- Directory patterns: `test/`, `__tests__/`, `tests/`, `node_modules/`
+
+Common test patterns are excluded automatically if not specified.
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## 5. LLM Configuration
+
+Mimir uses LLMs for two purposes: creating embeddings (vector representations) and generating chat responses. You can use different providers for each.
+
+### Embedding Configuration (required)
+
+Embeddings convert your documentation and code into vectors that can be searched semantically.
+
+#### Embedding Provider (required)
+
+```tsx
+MIMIR_LLM_EMBEDDING_PROVIDER=openai
+```
+
+Which provider to use. Options: `openai`, `google`, `mistral`
+- **OpenAI:** Fast, cost-effective, widely used. Good default choice.
+- **Google:** Alternative option, good quality embeddings.
+- **Mistral:** European provider, good for compliance requirements.
+
+#### Embedding Model (required)
+
+```tsx
+MIMIR_LLM_EMBEDDING_MODEL=text-embedding-3-small
+```
+
+The specific model to use. Different models have different quality/cost tradeoffs:
+- `text-embedding-3-small`: Fast and cheap, good for most use cases
+- `text-embedding-3-large`: Higher quality, more expensive
+- `text-embedding-004` (Google): Alternative option
+
+#### Embedding API Key (required)
+
+```tsx
+MIMIR_LLM_EMBEDDING_API_KEY=sk-your-key-here
+```
+
+Your API key for the chosen provider. Required to make embedding API calls.
+
+### Chat Configuration (required)
+
+Chat completions generate natural language answers from retrieved documentation.
+
+#### Chat Provider (required)
+
+```tsx
+MIMIR_LLM_CHAT_PROVIDER=openai
+```
+
+Which provider to use. Options: `openai`, `google`, `anthropic`, `mistral`
+- **OpenAI:** Fast, reliable, good default
+- **Anthropic (Claude):** High quality responses, better reasoning
+- **Google (Gemini):** Alternative option
+- **Mistral:** European provider
+
+#### Chat Model (required)
+
+```tsx
+MIMIR_LLM_CHAT_MODEL=gpt-4
+```
+
+The specific model. Examples:
+- OpenAI: `gpt-4`, `gpt-4-turbo`, `gpt-3.5-turbo`
+- Anthropic: `claude-3-opus`, `claude-3-sonnet`, `claude-3-haiku`
+- Google: `gemini-pro`
+- Mistral: `mistral-large`
+
+#### Chat API Key (required)
+
+```tsx
+MIMIR_LLM_CHAT_API_KEY=sk-your-key-here
+```
+
+Your API key for the chosen provider.
+
+#### Chat Temperature (optional)
+
+```tsx
+MIMIR_LLM_CHAT_TEMPERATURE=0
+```
+
+**Default:** `0`
+
+Controls randomness (0.0 to 2.0). Lower values (0-0.3) give more deterministic, factual answers. Higher values (0.7-1.0) give more creative responses.
+
+### Mixing Providers
+
+You can use different providers for embeddings and chat:
+
+```tsx
+# Use OpenAI for embeddings (fast, cheap)
+MIMIR_LLM_EMBEDDING_PROVIDER=openai
+MIMIR_LLM_EMBEDDING_MODEL=text-embedding-3-small
+
+# Use Anthropic for chat (high quality)
+MIMIR_LLM_CHAT_PROVIDER=anthropic
+MIMIR_LLM_CHAT_MODEL=claude-3-sonnet
+```
+
+This allows you to optimize for cost (cheap embeddings) and quality (better chat model) separately.
+
+## Complete Example
+
+Here's a complete `.env` file example with all common settings:
+
+```tsx
+# Server (Required)
+MIMIR_SERVER_API_KEY=your-generated-api-key
+
+# Supabase (Required)
+MIMIR_SUPABASE_URL=https://your-project.supabase.co
+MIMIR_SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# Supabase (Optional)
+MIMIR_SUPABASE_DB_PASSWORD=your-db-password
+MIMIR_SUPABASE_TABLE=docs
+MIMIR_SUPABASE_SIMILARITY_THRESHOLD=0.2
+MIMIR_SUPABASE_MATCH_COUNT=10
+
+# GitHub - Single Repository
+MIMIR_GITHUB_URL=https://github.com/your-org/your-repo
+MIMIR_GITHUB_BRANCH=main
+MIMIR_GITHUB_TOKEN=ghp_your_token_here
+
+# LLM - Embeddings (Required)
+MIMIR_LLM_EMBEDDING_PROVIDER=openai
+MIMIR_LLM_EMBEDDING_MODEL=text-embedding-3-small
+MIMIR_LLM_EMBEDDING_API_KEY=sk-your-openai-key
+
+# LLM - Chat (Required)
+MIMIR_LLM_CHAT_PROVIDER=openai
+MIMIR_LLM_CHAT_MODEL=gpt-4
+MIMIR_LLM_CHAT_API_KEY=sk-your-openai-key
+MIMIR_LLM_CHAT_TEMPERATURE=0
+```
+
+## Next Steps
+
+- Learn about [Deployment](/docs/deployment) options
+- Check the [API Reference](/docs/api-reference) for programmatic access
+- Set up [MCP integration](/docs/mcp) for AI assistants

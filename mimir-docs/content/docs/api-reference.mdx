@@ -1,0 +1,263 @@
+---
+title: API Reference
+description: Complete API documentation for all Mimir endpoints
+---
+
+import { Separator } from "@/components/ui/separator";
+
+Mimir provides RESTful APIs for querying your documentation and codebase. All endpoints support JSON request/response formats.
+
+## Authentication
+
+Most endpoints require authentication via API key. Include it in one of these ways:
+
+**Header:**
+```
+x-api-key: your-api-key
+```
+
+**Or Authorization header:**
+```
+Authorization: Bearer your-api-key
+```
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## POST /v1/chat/completions
+
+OpenAI-compatible chat completions endpoint. Query your documentation and codebase using natural language.
+
+**Authentication:** Required  
+**Content-Type:** `application/json`
+
+**Request Body:**
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "How do I implement authentication?"
+    }
+  ],
+  "matchCount": 10,
+  "similarityThreshold": 0.2,
+  "systemPrompt": "You are a helpful coding assistant",
+  "stream": false
+}
+```
+
+**Parameters:**
+- `messages` (required): Array of message objects
+- `matchCount` (optional): Number of document chunks to retrieve (default: 10)
+- `similarityThreshold` (optional): Minimum similarity score (default: 0.2)
+- `systemPrompt` (optional): System message for the LLM
+- `stream` (optional): Enable streaming responses (default: false)
+
+**Example:**
+```bash
+curl -X POST https://your-server.com/v1/chat/completions \
+  -H "x-api-key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "How do I use the API?"}],
+    "stream": false
+  }'
+```
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## POST /mcp/ask
+
+Semantic search endpoint for MCP (Model Context Protocol). Returns matching document chunks with content.
+
+**Authentication:** Not required  
+**Content-Type:** `application/json`
+
+**Request Body:**
+```json
+{
+  "question": "How do I implement authentication?",
+  "matchCount": 10,
+  "similarityThreshold": 0.2
+}
+```
+
+**Parameters:**
+- `question` (required): Your search query
+- `matchCount` (optional): Number of chunks to return (default: 10)
+- `similarityThreshold` (optional): Minimum similarity (default: 0.2)
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "count": 2,
+  "matches": [
+    {
+      "chunkTitle": "Authentication Guide",
+      "chunkContent": "To implement authentication...",
+      "similarity": 0.85,
+      "githubUrl": "https://github.com/user/repo/blob/main/docs/auth.md",
+      "docsUrl": "https://docs.example.com/auth"
+    }
+  ]
+}
+```
+
+**Example:**
+```bash
+curl -X POST https://your-server.com/mcp/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "How do I use the API?",
+    "matchCount": 5
+  }'
+```
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## POST /ingest
+
+Trigger manual ingestion of configured repositories.
+
+**Authentication:** Required  
+**Content-Type:** `application/json`
+
+**Request Body:** (optional)
+```json
+{
+  "force": false
+}
+```
+
+**Parameters:**
+- `force` (optional): Force re-ingestion even if already up-to-date (default: false)
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "trigger": "manual-request",
+  "durationMs": 5432,
+  "stats": {
+    "documentsProcessed": 150,
+    "chunksCreated": 450,
+    "errors": 0
+  }
+}
+```
+
+**Example:**
+```bash
+curl -X POST https://your-server.com/ingest \
+  -H "x-api-key: your-api-key"
+```
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## POST /webhook/github
+
+GitHub webhook endpoint for automatic ingestion on repository changes.
+
+**Authentication:** Not required (uses webhook secret)  
+**Content-Type:** `application/json`
+
+**Headers:**
+- `x-hub-signature-256`: GitHub webhook signature
+- `x-github-event`: Event type (e.g., `push`, `pull_request`)
+
+**Note:** Requires `MIMIR_SERVER_GITHUB_WEBHOOK_SECRET` to be configured.
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## GET /health
+
+Health check endpoint.
+
+**Authentication:** Not required
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "ingestionBusy": false
+}
+```
+
+**Example:**
+```bash
+curl https://your-server.com/health
+```
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## Error Responses
+
+All endpoints return errors in this format:
+
+```json
+{
+  "error": {
+    "message": "Error description",
+    "code": "ERROR_CODE"
+  }
+}
+```
+
+**Common Error Codes:**
+- `UNAUTHORIZED`: Missing or invalid API key
+- `VALIDATION_ERROR`: Invalid request parameters
+- `NOT_FOUND`: Resource not found
+- `INTERNAL_ERROR`: Server error
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## SDK Integration
+
+### OpenAI-Compatible SDKs
+
+Mimir's API is compatible with OpenAI's API format, so you can use any OpenAI-compatible SDK:
+
+```typescript
+import { createOpenAI } from '@ai-sdk/openai';
+
+const openai = createOpenAI({
+  baseURL: 'https://your-mimir-server.com/v1',
+  apiKey: 'your-api-key',
+});
+
+const { text } = await openai.chat.completions.create({
+  model: 'gpt-4',
+  messages: [{ role: 'user', content: 'How do I use the API?' }],
+});
+```
+
+### OpenAI SDK
+
+```typescript
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  baseURL: 'https://your-mimir-server.com/v1',
+  apiKey: 'your-api-key',
+});
+
+const completion = await openai.chat.completions.create({
+  model: 'gpt-4',
+  messages: [{ role: 'user', content: 'How do I use the API?' }],
+});
+```

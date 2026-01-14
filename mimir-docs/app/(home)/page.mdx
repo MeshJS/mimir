@@ -1,0 +1,300 @@
+import Link from "fumadocs-core/link";
+import {
+  ArrowRight,
+  Code,
+  Zap,
+  Shield,
+  Rocket,
+  Database,
+  Sparkles,
+  Globe,
+  Users,
+  Star,
+  GitBranch,
+  Search,
+  Brain,
+  BookOpen,
+  MessageSquare,
+  Workflow,
+} from "lucide-react";
+import { cn } from "@/lib/cn";
+import { buttonVariants } from "@/components/ui/button";
+import { Panel, PanelHeader, PanelTitle, PanelContent } from "@/components/ui/panel";
+import { Separator } from "@/components/ui/separator";
+
+<div className="mx-auto md:max-w-4xl *:[[id]]:scroll-mt-22">
+  <section className="py-16 sm:py-20 lg:py-32 xl:py-36">
+    <div className="text-center">
+      <h1 className="text-5xl sm:text-6xl lg:text-7xl mb-6 leading-tight font-semibold">
+        Go AI-Friendly with Mimir
+      </h1>
+
+      <div className="text-lg sm:text-xl mb-10 max-w-2xl mx-auto leading-relaxed">
+        Mimir is a contextual RAG system that transforms your codebase and documentation into an intelligent knowledge base. 
+        Connect your AI assistants to your entire codebase and docs with full context understanding.
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <Link
+          href="/docs/getting-started"
+          className={cn(
+            buttonVariants({ variant: 'default', size: 'lg' }),
+            'flex items-center justify-center gap-2'
+          )}
+        >
+          Get Started
+          <ArrowRight className="w-5 h-5" />
+        </Link>
+        <Link
+          href="/docs/configuration"
+          className={cn(
+            buttonVariants({ variant: 'secondary', size: 'lg' }),
+            'flex items-center justify-center gap-2'
+          )}
+        >
+          View Configuration
+        </Link>
+      </div>
+
+      <div className="mt-12 flex flex-wrap justify-center gap-8 text-sm text-muted-foreground">
+        <span className="inline-flex items-center">
+          <Shield className="w-4 h-4 mr-1" />
+          Production Ready
+        </span>
+        <span className="inline-flex items-center">
+          <Sparkles className="w-4 h-4 mr-1" />
+          MCP Integration
+        </span>
+        <span className="inline-flex items-center">
+          <Rocket className="w-4 h-4 mr-1" />
+          Fast & Scalable
+        </span>
+        <span className="inline-flex items-center">
+          <Users className="w-4 h-4 mr-1" />
+          Open Source
+        </span>
+      </div>
+    </div>
+  </section>
+
+
+  <Separator fullWidth />
+
+  <Panel id="why-mimir">
+    <PanelHeader className="mb-4">
+      <PanelTitle>Why Teams Choose Mimir</PanelTitle>
+    </PanelHeader>
+    <PanelContent>
+      <div className="space-y-10">
+        <div className="flex items-start gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background">
+            <Brain className="size-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="mb-2 font-semibold text-lg leading-snug">Contextual Understanding</h3>
+            <div className="text-muted-foreground leading-relaxed">
+              Unlike basic RAG, Mimir provides rich context around each code entity—full file content, imports, parent classes, and surrounding code. Your AI assistant understands not just what code does, but how it fits into your system.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background">
+            <MessageSquare className="size-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="mb-2 font-semibold text-lg leading-snug">AI Assistant Integration</h3>
+            <div className="text-muted-foreground leading-relaxed">
+              Connect Claude Code, VS Code, Claude Desktop, and other MCP-compatible assistants directly to your codebase. No more copy-pasting code—your AI assistant has instant access to your entire knowledge base.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background">
+            <Code className="size-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="mb-2 font-semibold text-lg leading-snug">Automatic Entity Extraction</h3>
+            <div className="text-muted-foreground leading-relaxed">
+              Automatically extracts and indexes functions, classes, interfaces, and more from TypeScript, Python, and other languages. Each entity includes JSDoc comments, parameters, return types, and direct links to source code.
+            </div>
+          </div>
+        </div>
+      </div>
+    </PanelContent>
+  </Panel>
+
+  <div className="py-8">
+    <Separator fullWidth />
+  </div>
+
+  <Panel id="features">
+    <PanelHeader className="mb-4">
+      <PanelTitle>
+        Everything You Need to Go AI-Friendly
+      </PanelTitle>
+    </PanelHeader>
+    <PanelContent>
+      <div className="space-y-8">
+        <div className="flex items-start gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background">
+            <GitBranch className="size-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="mb-1 font-semibold leading-snug">Multiple Repositories</h3>
+            <div className="text-sm text-muted-foreground leading-relaxed">
+              Ingest from multiple code and documentation repositories. Perfect for monorepos, microservices, or teams with separate code and docs repos.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background">
+            <BookOpen className="size-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="mb-1 font-semibold leading-snug">Documentation & Code</h3>
+            <div className="text-sm text-muted-foreground leading-relaxed">
+              Index both MDX documentation and source code. Your AI assistant can answer questions about APIs, implementation details, and usage examples.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background">
+            <Workflow className="size-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="mb-1 font-semibold leading-snug">GitHub Webhooks</h3>
+            <div className="text-sm text-muted-foreground leading-relaxed">
+              Automatic ingestion on code changes. Keep your knowledge base up-to-date without manual triggers. Set up once and forget about it.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background">
+            <Search className="size-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="mb-1 font-semibold leading-snug">OpenAI-Compatible API</h3>
+            <div className="text-sm text-muted-foreground leading-relaxed">
+              RESTful API that works with OpenAI-compatible SDKs and clients. Build custom interfaces or integrate with existing tools.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background">
+            <Database className="size-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="mb-1 font-semibold leading-snug">Supabase Vector Store</h3>
+            <div className="text-sm text-muted-foreground leading-relaxed">
+              Built on Supabase for reliable, scalable vector storage. Fast semantic search with configurable similarity thresholds and match counts.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background">
+            <Zap className="size-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="mb-1 font-semibold leading-snug">Multiple LLM Providers</h3>
+            <div className="text-sm text-muted-foreground leading-relaxed">
+              Use OpenAI, Anthropic, Google, or Mistral for embeddings and chat. Mix providers to optimize for cost and quality.
+            </div>
+          </div>
+        </div>
+      </div>
+    </PanelContent>
+  </Panel>
+
+  <div className="py-8">
+    <Separator fullWidth />
+  </div>
+
+  <Panel id="how-it-works">
+    <PanelHeader className="mb-4">
+      <PanelTitle>How It Works</PanelTitle>
+    </PanelHeader>
+    <PanelContent>
+      <div className="grid md:grid-cols-3 gap-8">
+        <div className="text-center">
+          <div className="flex size-16 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background mb-4 mx-auto">
+            <span className="text-2xl font-bold text-primary">1</span>
+          </div>
+          <h3 className="mb-2 font-semibold text-lg leading-snug">Ingest</h3>
+          <div className="text-sm text-muted-foreground leading-relaxed">
+            Mimir fetches your code and documentation from GitHub repositories, extracts entities, and creates rich contextual embeddings.
+          </div>
+        </div>
+
+        <div className="text-center">
+          <div className="flex size-16 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background mb-4 mx-auto">
+            <span className="text-2xl font-bold text-primary">2</span>
+          </div>
+          <h3 className="mb-2 font-semibold text-lg leading-snug">Store</h3>
+          <div className="text-sm text-muted-foreground leading-relaxed">
+            Embeddings are stored in Supabase with source URLs, metadata, and full context. Everything is indexed and ready for semantic search.
+          </div>
+        </div>
+
+        <div className="text-center">
+          <div className="flex size-16 items-center justify-center rounded-lg border border-muted-foreground/15 bg-muted ring-1 ring-edge ring-offset-1 ring-offset-background mb-4 mx-auto">
+            <span className="text-2xl font-bold text-primary">3</span>
+          </div>
+          <h3 className="mb-2 font-semibold text-lg leading-snug">Query</h3>
+          <div className="text-sm text-muted-foreground leading-relaxed">
+            Your AI assistant queries Mimir via MCP or REST API, gets relevant chunks with full context, and provides accurate answers with source links.
+          </div>
+        </div>
+      </div>
+    </PanelContent>
+  </Panel>
+
+  <div className="py-8">
+    <Separator fullWidth />
+  </div>
+
+  <Panel id="cta">
+    <PanelHeader className="mb-4">
+      <PanelTitle>Ready to Go AI-Friendly?</PanelTitle>
+    </PanelHeader>
+    <PanelContent>
+      <div className="text-center">
+        <div className="mb-6 text-muted-foreground leading-relaxed">
+          Get your codebase and documentation queryable by AI in minutes. Start building with Mimir today.
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <Link
+            href="/docs/getting-started"
+            className={cn(
+              buttonVariants({ variant: 'default', size: 'lg' }),
+              'flex items-center justify-center gap-2'
+            )}
+          >
+            Get Started
+            <ArrowRight className="w-5 h-5" />
+          </Link>
+
+          <Link
+            href="/docs/configuration"
+            className={cn(
+              buttonVariants({ variant: 'secondary', size: 'lg' }),
+              'flex items-center justify-center gap-2'
+            )}
+          >
+            <Globe className="w-5 h-5" />
+            View Documentation
+          </Link>
+        </div>
+      </div>
+    </PanelContent>
+  </Panel>
+
+  <Separator fullWidth />
+</div>

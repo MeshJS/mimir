@@ -1,0 +1,230 @@
+---
+title: Deployment
+description: Deploy Mimir to production with Docker or self-hosted options
+---
+
+import { Separator } from "@/components/ui/separator";
+
+Mimir can be deployed in several ways depending on your needs. Docker is the recommended approach for production deployments.
+
+## Building the Docker Image
+
+First, build the Docker image that you'll deploy to your platform:
+
+### Build the Image
+
+```bash
+docker build -t mimir-rag:latest .
+```
+
+Or use the Makefile:
+
+```bash
+make docker-build
+```
+
+### Test Locally (Optional)
+
+Before deploying, you can test the image locally:
+
+```bash
+docker run --rm \
+  -p 3000:3000 \
+  --env-file .env \
+  mimir-rag:latest
+```
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## Platform Deployment
+
+Once you have built the Docker image, deploy it to your chosen platform.
+
+## Hetzner Deployment
+
+Hetzner is a popular choice for deploying Mimir due to its simplicity and cost-effectiveness.
+
+### Quick Setup
+
+1. **Create a Hetzner Cloud Server:**
+   - Choose Ubuntu 22.04 or later
+   - Recommended: 2 vCPU, 4GB RAM (or higher for production)
+   - Select your preferred datacenter location
+
+2. **SSH into your server:**
+   ```bash
+   ssh root@your-server-ip
+   ```
+
+3. **Install Docker:**
+   ```bash
+   curl -fsSL https://get.docker.com -o get-docker.sh
+   sh get-docker.sh
+   ```
+
+4. **Clone, build, and configure:**
+   ```bash
+   git clone <your-repo-url>
+   cd mimir/mimir-rag
+   cp .env.example .env
+   # Edit .env with your configuration
+   
+   # Build the Docker image
+   docker build -t mimir-rag:latest .
+   ```
+
+5. **Deploy the image:**
+   ```bash
+   docker run -d \
+     --name mimir-rag \
+     -p 3000:3000 \
+     --env-file .env \
+     --restart unless-stopped \
+     mimir-rag:latest
+   ```
+
+That's it! Your Mimir instance is now running on Hetzner.
+
+### Using Docker Compose (Optional)
+
+For easier management, you can use Docker Compose:
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  mimir-rag:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: unless-stopped
+```
+
+Then run:
+```bash
+docker-compose up -d
+```
+
+### Firewall Configuration
+
+Make sure to open port 3000 (or your chosen port) in Hetzner's firewall:
+- Go to your server's firewall settings in Hetzner Cloud Console
+- Add a rule for TCP port 3000 (or your port)
+- Allow traffic from your IP or 0.0.0.0/0 for public access
+
+### Reverse Proxy (Recommended)
+
+For production, use Nginx or Caddy as a reverse proxy:
+
+**Nginx example:**
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## Self-Hosted Deployment
+
+Deploy Mimir on your own infrastructure for full control.
+
+### Requirements
+
+- Node.js 20 or later
+- Access to Supabase database
+- LLM provider API keys
+- Process manager (PM2 recommended)
+
+### Setup Steps
+
+1. **Clone and Install:**
+```bash
+git clone <your-repo-url>
+cd mimir-rag
+npm install
+```
+
+2. **Configure:**
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+3. **Set Up Database:**
+```bash
+make setup-db DB_URL=postgresql://user@host:5432/db DB_PASSWORD=secret
+```
+
+4. **Start with PM2:**
+```bash
+npm install -g pm2
+pm2 start npm --name "mimir-rag" -- start
+pm2 save
+pm2 startup
+```
+
+### Process Management
+
+**Start:** `pm2 start mimir-rag`  
+**Stop:** `pm2 stop mimir-rag`  
+**Restart:** `pm2 restart mimir-rag`  
+**View Logs:** `pm2 logs mimir-rag`
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## Production Checklist
+
+Before deploying to production:
+
+- [ ] Generate a secure API key
+- [ ] Set up Supabase with proper security settings
+- [ ] Configure GitHub webhook secret (if using webhooks)
+- [ ] Set appropriate similarity threshold and match count
+- [ ] Configure exclude patterns to avoid indexing test files
+- [ ] Set up monitoring and logging
+- [ ] Configure backup strategy for your database
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## Monitoring
+
+### Health Check
+
+Monitor your deployment with the health endpoint:
+
+```bash
+curl https://your-deployment.com/health
+```
+
+Expected response:
+```json
+{
+  "status": "ok",
+  "ingestionBusy": false
+}
+```
+
+### Scaling
+
+Mimir is stateless and can be scaled horizontally:
+- Run multiple instances behind a load balancer
+- All instances share the same Supabase database
+- Use sticky sessions if needed (not required for most use cases)

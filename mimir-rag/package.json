@@ -9,8 +9,7 @@
     "start": "node dist/server/start.js",
     "server": "tsx src/server/start.ts",
     "ingest:cli": "tsx src/cli/ingest.ts",
-    "generate-apikey": "tsx src/cli/generateApiKey.ts",
-    "check:mesh-wallet": "tsx scripts/check-mesh-wallet-chunks.ts"
+    "generate-apikey": "tsx src/cli/generateApiKey.ts"
   },
   "keywords": [],
   "author": "",

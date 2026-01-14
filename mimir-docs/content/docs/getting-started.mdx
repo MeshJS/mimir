@@ -1,0 +1,71 @@
+---
+title: Getting Started
+description: Quick setup guide to get Mimir running in minutes
+---
+
+Get Mimir up and running in just a few steps.
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+- **Node.js**: 20 or later
+- **Supabase**: A Supabase project for vector storage
+- **LLM Provider**: API key for OpenAI, Anthropic, Google, or Mistral
+- **GitHub** (optional): Repository with documentation (MDX) and/or code to ingest
+
+## Step 1: Set up Supabase
+
+1. Go to [supabase.com](https://supabase.com) and create a new project
+2. Note your project URL (e.g., `https://your-project.supabase.co`)
+3. Get your service role key from Project Settings → API
+
+## Step 2: Configure mimir-rag
+
+```bash
+cd mimir-rag
+cp .env.example .env
+# Edit .env with your Supabase and LLM credentials
+```
+
+See the [Configuration](/docs/configuration) guide for all available options.
+
+## Step 3: Generate API key
+
+Generate a secure API key for your server:
+
+```bash
+npm run generate-apikey
+```
+
+This will output an API key that you'll use to authenticate requests to your mimir-rag server.
+
+## Step 4: Start the server
+
+```bash
+make server
+```
+
+The server will:
+- Load your `.env` configuration
+- Automatically set up the database schema (if `DATABASE_URL` is configured)
+- Start the API on port 3000
+
+## Step 5: Trigger ingestion
+
+Ingest your first documentation or codebase:
+
+```bash
+npm run ingest:cli
+```
+
+This will fetch files from your configured GitHub repositories, extract entities, and store them in Supabase.
+
+## Next Steps
+
+Once you have mimir-rag running:
+
+1. Check out the [Configuration](/docs/configuration) guide to learn about all available environment variables
+2. Learn how to configure [multiple repositories](/docs/configuration#3-github-repository-configuration)
+3. Set up [MCP integration](/docs/mcp) to connect AI assistants
+4. Explore the [API Reference](/docs/api-reference) for programmatic access
