@@ -1,30 +1,40 @@
 {
-  "name": "meshjs-mcp",
+  "name": "@your-org/mimir-mcp",
   "version": "1.0.0",
   "type": "module",
-  "description": "Provides MeshJS library documentation for user's queries.",
+  "description": "MCP server that connects AI assistants to the Mimir documentation RAG system for semantic search.",
   "main": "dist/index.js",
   "bin": {
-    "mesh-mcp-server": "./dist/index.js"
+    "mimir-mcp-server": "./dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsup src/index.ts --format esm --target esnext",
     "prepublishOnly": "npm run build"
   },
-  "keywords": [],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "rag",
+    "documentation",
+    "semantic-search",
+    "ai",
+    "mimir"
+  ],
   "author": "",
   "license": "ISC",
-  "devDependencies": {
-    "@types/node": "^24.5.2",
-    "tsup": "^8.5.0",
-    "typescript": "^5.9.2"
-  },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.18.1",
-    "axios": "^1.12.2",
-    "dotenv": "^17.2.2",
-    "zod": "^3.25.76"
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "axios": "^1.13.2",
+    "dotenv": "^17.2.3",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
   }
 }

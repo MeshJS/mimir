@@ -4,12 +4,16 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import axios from "axios";
 
-// Production backend URL - change this for local development
-// For local development, use: http://localhost:3000
-const MIMIR_API_URL = "http://localhost:3000";
+const MIMIR_API_URL = process.env.MIMIR_API_URL || process.env.MCP_BACKEND_URL;
+const MCP_SERVER_NAME = process.env.MCP_SERVER_NAME || "Mimir MCP Server";
+
+if (!MIMIR_API_URL) {
+    console.error("Error: MIMIR_API_URL or MCP_BACKEND_URL environment variable must be set");
+    process.exit(1);
+}
 
 const server = new McpServer({
-    name: "Mimir MCP Server",
+    name: MCP_SERVER_NAME,
     version: "1.0.0"
 });
 
