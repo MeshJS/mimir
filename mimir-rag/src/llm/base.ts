@@ -159,23 +159,29 @@ export abstract class BaseChatProvider implements ChatProvider {
 
         const systemPrompt = "Please give a short succinct context (150-250 tokens) to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else.";
 
-        const userPrompt = "Summarize how this chunk fits into the broader file. Highlight the chunk's role, upstream dependencies, and any follow-on sections a reader should review."
-
         const limit = pLimit(Math.max(1, this.concurrencyLimit));
         const response = await Promise.all(
-            chunks.map((chunk) => limit(() => this.generateAnswer({
-                prompt: userPrompt,
-                context: {
-                    chunkContent: chunk,
-                    fileContent: fileContent,
-                },
-                systemPrompt,
-                maxTokens: Math.min(250, this.config.maxOutputTokens ?? 250),
-                temperature: this.config.temperature
-            })))
+            chunks.map((chunk) => {
+                const userPrompt = `Summarize how this chunk fits into the broader file. Highlight the chunk's role, upstream dependencies, and any follow-on sections a reader should review.
+
+Chunk Content:
+${chunk}
+
+Full File Content:
+${fileContent}`;
+
+                const tokens = this.estimateFileChunkContextTokens(systemPrompt, userPrompt);
+                return limit(() => 
+                    this.scheduleWithRateLimits(
+                        tokens,
+                        () => this.completeFileChunkContext(systemPrompt, userPrompt),
+                        { logPrefix: `${this.config.provider}:context`, signal: undefined }
+                    )
+                );
+            })
         );
 
-        return response.map((result) => result.answer.trim());
+        return response.map((text) => text.trim());
     }
 
     async generateEntityContexts(
@@ -236,6 +242,16 @@ export abstract class BaseChatProvider implements ChatProvider {
         tokens += this.config.maxOutputTokens ?? 500; // Estimate for context generation output
         return tokens;
     }
+
+    protected estimateFileChunkContextTokens(systemPrompt: string, userPrompt: string): number {
+        const model = this.config.model;
+        let tokens = countTokens(systemPrompt, model);
+        tokens += countTokens(userPrompt, model);
+        tokens += Math.min(250, this.config.maxOutputTokens ?? 250); // Estimate for file chunk context (shorter than entity context)
+        return tokens;
+    }
+
+    protected abstract completeFileChunkContext(systemPrompt: string, userPrompt: string): Promise<string>;
 
     protected abstract completeEntityContext(systemPrompt: string, userPrompt: string): Promise<string>;
 

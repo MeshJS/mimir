@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Logger } from "pino";
-import { AppConfig } from "../config/types";
+import type { AppConfig, CodeRepoConfig, DocsRepoConfig } from "../config/types";
 import {
     DEFAULT_BRANCH,
     buildSourceUrl,
@@ -66,6 +66,8 @@ export interface GithubDocument {
     sha: string;
     size: number;
     sourceUrl: string;
+    sourceRepoUrl?: string; // The GitHub repository URL this document came from
+    sourceRepoConfig?: CodeRepoConfig | DocsRepoConfig; // Per-repo configuration for source URL generation
 }
 
 export async function downloadGithubMdxFiles(appConfig: AppConfig): Promise<GithubMdxDocument[]> {
@@ -380,6 +382,7 @@ async function resetOutputDirectory(directory: string, logger: Logger): Promise<
 /**
  * Downloads both MDX and TypeScript files from GitHub repositories
  * Supports separate repos for code and docs, or a single repo for both
+ * Supports multiple repos with per-repo configuration
  * Returns a unified array of documents with type information
  */
 export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubDocument[]> {
@@ -387,25 +390,58 @@ export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubD
     const documents: GithubDocument[] = [];
     const config = appConfig.github;
 
-    // Determine which URLs to use
-    const docsUrl = config.docsUrl ?? config.githubUrl;
-    const codeUrl = config.codeUrl ?? config.githubUrl;
-
-    if (!docsUrl && !codeUrl) {
-        throw new Error("At least one of MIMIR_GITHUB_URL, MIMIR_GITHUB_DOCS_URL, or MIMIR_GITHUB_CODE_URL must be set.");
+    // Determine which repos to use - check for multiple repos first, then fall back to single repos
+    // If codeRepos/docsRepos arrays exist (even if empty), use them; otherwise fall back to single-repo config
+    let docsRepos: DocsRepoConfig[] = [];
+    if (config.docsRepos && config.docsRepos.length > 0) {
+        docsRepos = config.docsRepos;
+    } else if (config.docsUrl) {
+        docsRepos = [{
+            url: config.docsUrl,
+            directory: config.docsDirectory,
+            includeDirectories: config.docsIncludeDirectories,
+        }];
+    } else if (config.githubUrl) {
+        // Fall back to main githubUrl for docs if nothing else is configured
+        docsRepos = [{
+            url: config.githubUrl,
+            directory: config.docsDirectory ?? config.directory,
+            includeDirectories: config.docsIncludeDirectories ?? config.includeDirectories,
+        }];
+    }
+    
+    let codeRepos: CodeRepoConfig[] = [];
+    if (config.codeRepos && config.codeRepos.length > 0) {
+        codeRepos = config.codeRepos;
+    } else if (config.codeUrl) {
+        codeRepos = [{
+            url: config.codeUrl,
+            directory: config.codeDirectory,
+            includeDirectories: config.codeIncludeDirectories,
+        }];
+    } else if (config.githubUrl) {
+        // Fall back to main githubUrl for code if nothing else is configured
+        codeRepos = [{
+            url: config.githubUrl,
+            directory: config.codeDirectory ?? config.directory,
+            includeDirectories: config.codeIncludeDirectories ?? config.includeDirectories,
+        }];
     }
 
-    // Download MDX files from docs repo
-    if (docsUrl) {
+    if (docsRepos.length === 0 && codeRepos.length === 0) {
+        throw new Error("At least one of MIMIR_GITHUB_URL, MIMIR_GITHUB_DOCS_URL, MIMIR_GITHUB_CODE_URL, or numbered repo variables must be set.");
+    }
+
+    // Download MDX files from all docs repos
+    for (const docsRepo of docsRepos) {
         try {
-            // Use docs-specific config, falling back to main config
-            const docsDir = config.docsDirectory ?? config.directory;
-            const docsIncludeDirs = config.docsIncludeDirectories ?? config.includeDirectories;
+            const docsDir = docsRepo.directory ?? config.directory;
+            const docsIncludeDirs = docsRepo.includeDirectories ?? config.includeDirectories;
             const docsConfig = { 
                 ...appConfig, 
                 github: { 
                     ...config, 
-                    githubUrl: docsUrl,
+                    githubUrl: docsRepo.url,
                     directory: docsDir,
                     includeDirectories: docsIncludeDirs,
                 } 
@@ -414,24 +450,37 @@ export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubD
             documents.push(...mdxFiles.map((doc) => ({
                 type: "mdx" as const,
                 ...doc,
+                sourceRepoUrl: docsRepo.url,
+                sourceRepoConfig: docsRepo,
             })));
-            logger.info(`Found ${mdxFiles.length} MDX file${mdxFiles.length === 1 ? "" : "s"} from ${docsUrl}.`);
+            logger.info(`Found ${mdxFiles.length} MDX file${mdxFiles.length === 1 ? "" : "s"} from ${docsRepo.url}.`);
         } catch (error) {
-            logger.warn({ err: error, url: docsUrl }, "Failed to download MDX files; continuing with TypeScript files only.");
+            logger.warn({ err: error, url: docsRepo.url }, "Failed to download MDX files from repo; continuing with other repos.");
         }
     }
 
-    // Download TypeScript, Python, and Rust files from code repo
-    if (codeUrl) {
+    // Download TypeScript, Python, and Rust files from all code repos
+    for (const codeRepo of codeRepos) {
         try {
-            // Use code-specific config, falling back to main config
-            const codeDir = config.codeDirectory ?? config.directory;
-            const codeIncludeDirs = config.codeIncludeDirectories ?? config.includeDirectories;
+            const codeDir = codeRepo.directory ?? config.directory;
+            const codeIncludeDirs = codeRepo.includeDirectories ?? config.includeDirectories;
+            
+            // Merge repo-specific excludePatterns with global parser excludePatterns
+            const globalExcludePatterns = appConfig.parser?.excludePatterns ?? [];
+            const repoExcludePatterns = codeRepo.excludePatterns ?? [];
+            const mergedExcludePatterns = [...new Set([...globalExcludePatterns, ...repoExcludePatterns])];
+            
+            const mergedParserConfig = {
+                ...appConfig.parser,
+                excludePatterns: mergedExcludePatterns,
+            };
+
             const codeConfig = { 
                 ...appConfig, 
+                parser: mergedParserConfig,
                 github: { 
                     ...config, 
-                    githubUrl: codeUrl,
+                    githubUrl: codeRepo.url,
                     directory: codeDir,
                     includeDirectories: codeIncludeDirs,
                 } 
@@ -447,20 +496,26 @@ export async function downloadGithubFiles(appConfig: AppConfig): Promise<GithubD
                 ...tsFiles.map((doc) => ({
                     type: "typescript" as const,
                     ...doc,
+                    sourceRepoUrl: codeRepo.url,
+                    sourceRepoConfig: codeRepo,
                 })),
                 ...pyFiles.map((doc) => ({
                     type: "python" as const,
                     ...doc,
+                    sourceRepoUrl: codeRepo.url,
+                    sourceRepoConfig: codeRepo,
                 })),
                 ...rustFiles.map((doc) => ({
                     type: "rust" as const,
                     ...doc,
+                    sourceRepoUrl: codeRepo.url,
+                    sourceRepoConfig: codeRepo,
                 })),
             );
 
-            logger.info(`Found ${tsFiles.length} TypeScript file${tsFiles.length === 1 ? "" : "s"}, ${pyFiles.length} Python file${pyFiles.length === 1 ? "" : "s"}, and ${rustFiles.length} Rust file${rustFiles.length === 1 ? "" : "s"} from ${codeUrl}.`);
+            logger.info(`Found ${tsFiles.length} TypeScript file${tsFiles.length === 1 ? "" : "s"}, ${pyFiles.length} Python file${pyFiles.length === 1 ? "" : "s"}, and ${rustFiles.length} Rust file${rustFiles.length === 1 ? "" : "s"} from ${codeRepo.url}.`);
         } catch (error) {
-            logger.warn({ err: error, url: codeUrl }, "Failed to download TypeScript/Python/Rust files; continuing with MDX files only.");
+            logger.warn({ err: error, url: codeRepo.url }, "Failed to download code files from repo; continuing with other repos.");
         }
     }
 

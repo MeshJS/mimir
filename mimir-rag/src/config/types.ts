@@ -24,12 +24,14 @@ export interface GithubConfig {
     githubUrl: string;
     directory?: string; // Directory for main repo (fallback if separate not set)
     includeDirectories?: string[]; // Include directories for main repo (fallback if separate not set)
-    codeUrl?: string; // Optional: separate repo for code (TypeScript, Python, etc.)
-    codeDirectory?: string; // Optional: directory for code repo
-    codeIncludeDirectories?: string[]; // Optional: include directories for code repo
-    docsUrl?: string; // Optional: separate repo for MDX docs
-    docsDirectory?: string; // Optional: directory for docs repo
-    docsIncludeDirectories?: string[]; // Optional: include directories for docs repo
+    codeUrl?: string; // Optional: separate repo for code (TypeScript, Python, etc.) - backward compatibility
+    codeDirectory?: string; // Optional: directory for code repo - backward compatibility
+    codeIncludeDirectories?: string[]; // Optional: include directories for code repo - backward compatibility
+    docsUrl?: string; // Optional: separate repo for MDX docs - backward compatibility
+    docsDirectory?: string; // Optional: directory for docs repo - backward compatibility
+    docsIncludeDirectories?: string[]; // Optional: include directories for docs repo - backward compatibility
+    codeRepos?: CodeRepoConfig[]; // Multiple code repositories with per-repo configuration
+    docsRepos?: DocsRepoConfig[]; // Multiple docs repositories with per-repo configuration
     branch?: string;
     token?: string;
     outputDir?: string;
@@ -43,6 +45,21 @@ export interface ParserConfig {
 }
 
 export interface DocumentationConfig {
+    baseUrl?: string;
+    contentPath?: string;
+}
+
+export interface CodeRepoConfig {
+    url: string;
+    directory?: string;
+    includeDirectories?: string[];
+    excludePatterns?: string[];
+}
+
+export interface DocsRepoConfig {
+    url: string;
+    directory?: string;
+    includeDirectories?: string[];
     baseUrl?: string;
     contentPath?: string;
 }
