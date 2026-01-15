@@ -67,8 +67,10 @@ const optionVariants = cva(
 
 export function ViewOptions({
   githubUrl,
+  markdownUrl,
 }: {
   githubUrl: string;
+  markdownUrl: string;
 }) {
   const [open, setOpen] = useState(false);
 

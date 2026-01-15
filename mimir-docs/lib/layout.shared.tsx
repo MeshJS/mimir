@@ -5,7 +5,7 @@ export function baseOptions(): BaseLayoutProps {
     nav: {
       title: 'Mimir',
     },
-    githubUrl: "https://github.com/your-org/mimir",
+    githubUrl: process.env.NEXT_PUBLIC_GITHUB_URL || "https://github.com/MeshJS/mimir",
     links: [],
   };
 }

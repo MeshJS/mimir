@@ -25,7 +25,7 @@ export default async function Page(props: {
 
   const MDX = page.data.body;
   const markdownUrl = `/llms.mdx${page.url}`;
-  const githubUrl = `${baseOptions().githubUrl}/tree/main/mimir-docs/content/docs/${page.path}.mdx`;
+  const githubUrl = `${baseOptions().githubUrl}/tree/main/mimir-docs/content/docs/${page.path}`;
 
   // Get previous and next pages
   const currentIndex = DOCS_ORDER.indexOf(page.url);
