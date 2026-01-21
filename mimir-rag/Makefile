@@ -1,13 +1,10 @@
-.PHONY: setup-db server ingest clean docker-build docker-run docker-run-build
+.PHONY: setup-db baseline-db server ingest clean docker-build docker-run docker-run-build
 
-# Export environment variables to subprocesses
 export
 
-# Use environment variables - check both Make variable and environment variable
 DB_URL ?= $(or $(DATABASE_URL),$(shell echo $$DATABASE_URL))
 DB_PASSWORD ?= $(or $(PGPASSWORD),$(shell echo $$PGPASSWORD))
 PSQL ?= psql
-SETUP_SQL := src/supabase/setup.sql
 IMAGE_NAME ?= mimir-rag:local
 CONFIG_PATH ?= .env
 CONFIG_ABS := $(abspath $(CONFIG_PATH))
@@ -19,19 +16,55 @@ setup-db:
 		. "$(CONFIG_PATH)"; \
 		set +a; \
 	fi; \
-	if [ -z "$$DATABASE_URL" ] && [ -z "$(DB_URL)" ]; then \
-		echo "Error: set DATABASE_URL in $(CONFIG_PATH) or pass DB_URL=... so the schema can be bootstrapped."; \
+	DB_URL_FINAL=""; \
+	if [ -n "$$MIMIR_DATABASE_URL" ]; then \
+		DB_URL_FINAL="$$MIMIR_DATABASE_URL"; \
+	elif [ -n "$$DATABASE_URL" ]; then \
+		DB_URL_FINAL="$$DATABASE_URL"; \
+	elif [ -n "$(DB_URL)" ]; then \
+		DB_URL_FINAL="$(DB_URL)"; \
+	fi; \
+	if [ -z "$$DB_URL_FINAL" ]; then \
+		echo "Error: set MIMIR_DATABASE_URL or DATABASE_URL in $(CONFIG_PATH), or pass DB_URL=..."; \
 		exit 1; \
 	fi; \
-	DB_URL="$${DATABASE_URL:-$(DB_URL)}"; \
-	DB_PASSWORD="$${PGPASSWORD:-$(DB_PASSWORD)}"; \
-	if [ -z "$$DB_PASSWORD" ]; then \
-		$(PSQL) "$$DB_URL" -f $(SETUP_SQL); \
-	else \
-		PGPASSWORD="$$DB_PASSWORD" $(PSQL) "$$DB_URL" -f $(SETUP_SQL); \
+	export DATABASE_URL="$$DB_URL_FINAL"; \
+	if ! npx prisma migrate deploy 2>&1; then \
+		echo ""; \
+		echo "Migration failed. If your database already has a schema from the old setup:"; \
+		echo "  1. Run 'make baseline-db' to mark the migration as applied, OR"; \
+		echo "  2. Run 'npm run prisma:push' for development (doesn't track migrations)"; \
+		exit 1; \
 	fi
 
-server: setup-db
+baseline-db:
+	@if [ -f "$(CONFIG_PATH)" ]; then \
+		set -a; \
+		. "$(CONFIG_PATH)"; \
+		set +a; \
+	fi; \
+	DB_URL_FINAL=""; \
+	if [ -n "$$MIMIR_DATABASE_URL" ]; then \
+		DB_URL_FINAL="$$MIMIR_DATABASE_URL"; \
+	elif [ -n "$$DATABASE_URL" ]; then \
+		DB_URL_FINAL="$$DATABASE_URL"; \
+	elif [ -n "$(DB_URL)" ]; then \
+		DB_URL_FINAL="$(DB_URL)"; \
+	fi; \
+	if [ -z "$$DB_URL_FINAL" ]; then \
+		echo "Error: set MIMIR_DATABASE_URL or DATABASE_URL in $(CONFIG_PATH)"; \
+		exit 1; \
+	fi; \
+	export DATABASE_URL="$$DB_URL_FINAL"; \
+	echo "Baselining existing database schema (marking migration as applied)..."; \
+	npx prisma migrate resolve --applied 0_init && echo "Baseline complete! You can now run 'make setup-db' or 'make server'." || echo "Note: Migration may already be marked as applied."
+
+server:
+	@if [ -f "$(CONFIG_PATH)" ]; then \
+		set -a; \
+		. "$(CONFIG_PATH)"; \
+		set +a; \
+	fi; \
 	npm run server
 
 ingest:
