@@ -316,9 +316,6 @@ function splitEntity(entity: UnifiedEntity, options: ChunkerOptions): EntityChun
     }
     
     return parts.map((part, index) => {
-        // Calculate actual line numbers (1-based) for this part
-        // startLineIndex is 0-based, so add 1 to get 1-based start line
-        // endLineIndex is exclusive (points to line after), so it's already the correct 1-based end line
         const partStartLine = entity.startLine + part.startLineIndex;
         const partEndLine = entity.startLine + part.endLineIndex - 1; // Convert exclusive to inclusive
         

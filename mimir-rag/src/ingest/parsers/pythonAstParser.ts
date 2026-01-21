@@ -99,13 +99,7 @@ export async function parsePythonFile(
 
     const entities: PythonEntity[] = [];
 
-    // Only add module-level entity if there are no individual entities
-    // This prevents duplication and poor chunking when individual functions/classes exist
-    // The module entity is only useful when the file contains only module-level code
     if (content.trim().length > 0 && astResult.entities.length === 0) {
-        // Calculate endLine correctly: count newlines and handle trailing newline
-        // If content ends with newline, the trailing newline doesn't create a new content line
-        // Example: "line1\nline2\n" has 2 newlines but only 2 lines of content
         const newlineCount = (content.match(/\n/g) || []).length;
         const endLine = content.endsWith("\n") ? newlineCount : newlineCount + 1;
         
@@ -156,7 +150,6 @@ export async function parsePythonFile(
 }
 
 function extractDocstring(node: Node, content: string): string | undefined {
-    // Look for docstring as first statement in function/class body
     const body = node.childForFieldName("body");
     if (!body) return undefined;
 
@@ -207,7 +200,6 @@ function extractName(node: Node): string | undefined {
     if (nameNode) {
         return nameNode.text;
     }
-    // Fallback: look for identifier in children
     for (let i = 0; i < node.childCount; i++) {
         const child = node.child(i);
         if (child && child.type === "identifier") {
@@ -231,7 +223,6 @@ function traverseTree(
         return;
     }
 
-    // Handle function definitions
     if (nodeType === "function_definition" || nodeType === "decorated_definition") {
         const funcNode = nodeType === "decorated_definition" 
             ? node.childForFieldName("definition") 
@@ -252,8 +243,8 @@ function traverseTree(
             kind: parentClass ? "method" : "function",
             name,
             parent: parentClass,
-            startLine: startRow + 1, // tree-sitter uses 0-based, we use 1-based
-            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
+            startLine: startRow + 1,
+            endLine: endRow,
             docstring,
             parameters,
             returnType,
@@ -261,7 +252,6 @@ function traverseTree(
         return;
     }
 
-    // Handle class definitions
     if (nodeType === "class_definition") {
         const name = extractName(node);
         if (!name) return;
@@ -273,8 +263,8 @@ function traverseTree(
         result.entities.push({
             kind: "class",
             name,
-            startLine: startRow + 1, // tree-sitter uses 0-based, we use 1-based
-            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
+            startLine: startRow + 1,
+            endLine: endRow,
             docstring,
         });
 
@@ -303,7 +293,6 @@ function traverseTree(
         }
     }
 
-    // Recursively traverse children
     for (let i = 0; i < node.childCount; i++) {
         const child = node.child(i);
         if (child) {
@@ -327,7 +316,6 @@ async function runPythonAstAnalysis(filepath: string, content: string): Promise<
             entities: [],
         };
 
-        // Traverse the tree starting from the root
         traverseTree(tree.rootNode, content, result);
 
         return result;

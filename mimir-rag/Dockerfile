@@ -4,8 +4,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 COPY tsconfig.json ./
+COPY prisma ./prisma
 COPY src ./src
 RUN npm ci --omit=optional && \
+    npx prisma generate && \
     npm run build && \
     npm prune --omit=dev --omit=optional && \
     # Remove unnecessary files from node_modules
@@ -24,7 +26,7 @@ RUN apk add --no-cache postgresql-client && \
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/src/supabase/setup.sql ./src/supabase/setup.sql
+COPY --from=builder /app/prisma ./prisma
 COPY .env.example ./
 COPY scripts ./scripts
 

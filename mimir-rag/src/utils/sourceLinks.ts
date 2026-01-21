@@ -28,13 +28,10 @@ export function resolveSourceLinks(
 
     const isDocFile = /\.(md|mdx)$/i.test(filepath);
 
-    // Prefer the ingestion-time sourceUrl (from GitHub download) as the canonical GitHub URL.
-    // Fall back to computing from current GitHub config if it's not available.
     const baseGithubUrl =
         existingSourceUrl ||
         computeGithubUrl(filepath, config?.github, sourceRepoConfig);
 
-    // Use per-repo docs config if available, otherwise fall back to global config
     const docsConfigForFile = isDocFile && sourceRepoConfig && 'baseUrl' in sourceRepoConfig
         ? { baseUrl: sourceRepoConfig.baseUrl, contentPath: sourceRepoConfig.contentPath }
         : config?.docs;
@@ -43,7 +40,6 @@ export function resolveSourceLinks(
     const githubUrl = appendSlug(baseGithubUrl, slug);
     const docsUrl = appendSlug(baseDocsUrl, slug);
 
-    // For docs, prefer docsUrl; for code (any language), prefer githubUrl.
     const finalUrl = isDocFile
         ? (docsUrl ?? githubUrl ?? baseDocsUrl ?? baseGithubUrl)
         : (githubUrl ?? baseGithubUrl ?? docsUrl ?? baseDocsUrl);
@@ -62,7 +58,6 @@ function computeGithubUrl(
     githubConfig?: GithubConfig,
     sourceRepoConfig?: CodeRepoConfig | DocsRepoConfig
 ): string | undefined {
-    // Use source repo config if available (from document)
     if (sourceRepoConfig) {
         try {
             const parsed = parseGithubUrl(sourceRepoConfig.url);
@@ -76,7 +71,6 @@ function computeGithubUrl(
         }
     }
 
-    // Fall back to global config (backward compatibility)
     const url = githubConfig?.githubUrl || githubConfig?.codeUrl;
     if (!url) {
         return undefined;
@@ -85,7 +79,6 @@ function computeGithubUrl(
     try {
         const parsed = parseGithubUrl(url);
         const branch = githubConfig.branch ?? parsed.branch ?? DEFAULT_BRANCH;
-        // Use codeDirectory if codeUrl is used, otherwise use directory
         const directory = githubConfig.codeUrl ? githubConfig.codeDirectory : githubConfig.directory;
         const scopedPath = joinRepoPaths(parsed.path, directory);
         const repoPath = joinRepoPaths(scopedPath, filepath);
