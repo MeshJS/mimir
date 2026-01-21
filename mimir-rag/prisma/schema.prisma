@@ -1,0 +1,35 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Docs {
+  id             BigInt    @id @default(autoincrement()) @db.BigInt
+  content        String    @db.Text
+  contextualText String    @map("contextual_text") @db.Text
+  embedding      Unsupported("vector(3072)")
+  filepath       String    @db.Text
+  chunkId        Int       @map("chunk_id")
+  chunkTitle     String    @map("chunk_title") @db.Text
+  checksum       String    @db.Text
+  githubUrl      String?   @map("github_url") @db.Text
+  docsUrl        String?   @map("docs_url") @db.Text
+  finalUrl       String?   @map("final_url") @db.Text
+  sourceType     String    @default("mdx") @map("source_type") @db.Text
+  entityType     String?   @map("entity_type") @db.Text
+  startLine      Int?      @map("start_line")
+  endLine        Int?      @map("end_line")
+  searchTokens   Unsupported("tsvector") @map("search_tokens")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([filepath, chunkId], name: "docs_filepath_chunk_id_unique")
+  @@index([filepath], name: "docs_filepath_idx")
+  @@index([checksum], name: "docs_checksum_idx")
+  @@index([sourceType], name: "docs_source_type_idx")
+  @@index([entityType], name: "docs_entity_type_idx")
+  @@map("docs")
+}
