@@ -1,13 +1,15 @@
 ## mimir-rag
 
-Utility CLI + API that ingests **documentation (MDX) and codebases** into Supabase using **contextual RAG** and exposes OpenAI-compatible chat completions, MCP endpoints, and ingestion endpoints. It currently supports **TypeScript** and **Python** code, and is designed to be easily extensible to additional languages. Perfect for making your entire codebase and documentation queryable by AI assistants with rich contextual understanding.
+Utility CLI + API that ingests **documentation (MDX) and codebases** into PostgreSQL (with pgvector) using **contextual RAG** and exposes OpenAI-compatible chat completions, MCP endpoints, and ingestion endpoints. It currently supports **TypeScript** and **Python** code, and is designed to be easily extensible to additional languages. Perfect for making your entire codebase and documentation queryable by AI assistants with rich contextual understanding.
+
+Works with any PostgreSQL database provider (Supabase, Neon, self-hosted, etc.) that supports the pgvector extension.
 
 ## Quick Start
 
 1. **Configure environment:**
    ```bash
    cp .env.example .env
-   # Edit .env with your Supabase + LLM credentials
+   # Edit .env with your PostgreSQL database + LLM credentials
    ```
 
 2. **Generate API key:**
@@ -36,18 +38,17 @@ Utility CLI + API that ingests **documentation (MDX) and codebases** into Supaba
 
 The database schema is automatically initialized when you run `make server` if you provide database credentials in your `.env` file. You have two options:
 
-**Option 1: Automatic (Recommended)**
-Add your Supabase database password to `.env`:
+Provide the full PostgreSQL connection string in `.env`:
 ```bash
-MIMIR_SUPABASE_DB_PASSWORD=your_db_password
+MIMIR_DATABASE_URL=postgresql://user:password@host:5432/database
 ```
-The system will automatically construct the `DATABASE_URL` from your `MIMIR_SUPABASE_URL`.
 
-**Option 2: Manual DATABASE_URL**
-Provide the full database URL in `.env`:
-```bash
-DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
-```
+**Important:** The default schema uses `vector(3072)` for embeddings. If your embedding model uses a different dimension, you must update the database schema:
+
+1. Check your embedding model's dimension (e.g., OpenAI `text-embedding-3-small` uses 1536, `text-embedding-3-large` uses 3072)
+2. Update the migration file `prisma/migrations/0_init/migration.sql` to change `vector(3072)` to your model's dimension
+3. Update `prisma/schema.prisma` to change `Unsupported("vector(3072)")` to match
+4. Run migrations: `make setup-db`
 
 ### Manual Database Setup
 
@@ -123,9 +124,8 @@ docker run --rm \
 The Docker container:
 1. Mounts your `.env` file to `/app/.env` (read-only)
 2. Automatically loads all environment variables from `.env`
-3. Auto-constructs `DATABASE_URL` from `MIMIR_SUPABASE_URL` + `MIMIR_SUPABASE_DB_PASSWORD` (if not already set)
-4. Runs the database schema setup SQL automatically
-5. Starts the server
+3. Runs Prisma migrations to set up the database schema automatically
+4. Starts the server
 
 **No manual database setup required!** Just add your database password to `.env` and everything else is automatic.
 
@@ -138,11 +138,13 @@ All configuration is managed through environment variables in the `.env` file. S
 Key configuration variables include:
 
 - **Server**: `MIMIR_SERVER_API_KEY` (required), `MIMIR_SERVER_GITHUB_WEBHOOK_SECRET`, `MIMIR_SERVER_FALLBACK_INGEST_INTERVAL_MINUTES`
-- **Supabase**: `MIMIR_SUPABASE_URL` (required), `MIMIR_SUPABASE_SERVICE_ROLE_KEY` (required), `MIMIR_SUPABASE_TABLE` (optional, default: "docs")
+- **Database**: `MIMIR_DATABASE_URL` (required) - PostgreSQL connection string
+  
+  **Note:** Update the embedding dimension in the database schema (`vector(3072)`) to match your embedding model's output dimension.
 - **GitHub** (language-agnostic code + docs ingestion): 
   - `MIMIR_GITHUB_URL` - Main repository URL (fallback if separate repos not set)
-  - `MIMIR_GITHUB_CODE_URL` - Separate repository for code (TypeScript, Python, etc.) (optional, backward compatible)
-  - `MIMIR_GITHUB_DOCS_URL` - Separate repository for MDX documentation (optional, backward compatible)
+  - `MIMIR_GITHUB_CODE_URL` - Separate repository for code (TypeScript, Python, etc.) (optional)
+  - `MIMIR_GITHUB_DOCS_URL` - Separate repository for MDX documentation (optional)
   - `MIMIR_GITHUB_TOKEN`, `MIMIR_GITHUB_DIRECTORY`, `MIMIR_GITHUB_BRANCH`
   - `MIMIR_GITHUB_CODE_DIRECTORY`, `MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES` - Code repo specific settings
   - `MIMIR_GITHUB_DOCS_DIRECTORY`, `MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES` - Docs repo specific settings
@@ -166,7 +168,7 @@ Key configuration variables include:
 
 You can configure single or multiple repositories for code and MDX documentation. Code repositories can contain TypeScript, Python, or any other supported language – the ingestion pipeline is language-agnostic at the repository level.
 
-#### Single Repository (Backward Compatible)
+#### Single Repository
 
 ```bash
 # Main repository (fallback)

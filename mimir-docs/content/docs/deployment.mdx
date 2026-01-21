@@ -145,7 +145,7 @@ Deploy Mimir on your own infrastructure for full control.
 ### Requirements
 
 - Node.js 20 or later
-- Access to Supabase database
+- Access to PostgreSQL database with pgvector extension
 - LLM provider API keys
 - Process manager (PM2 recommended)
 
@@ -193,7 +193,7 @@ pm2 startup
 Before deploying to production:
 
 - [ ] Generate a secure API key
-- [ ] Set up Supabase with proper security settings
+- [ ] Set up PostgreSQL database with proper security settings
 - [ ] Configure GitHub webhook secret (if using webhooks)
 - [ ] Set appropriate similarity threshold and match count
 - [ ] Configure exclude patterns to avoid indexing test files
@@ -226,5 +226,5 @@ Expected response:
 
 Mimir is stateless and can be scaled horizontally:
 - Run multiple instances behind a load balancer
-- All instances share the same Supabase database
+- All instances share the same PostgreSQL database
 - Use sticky sessions if needed (not required for most use cases)

@@ -7,7 +7,7 @@ Welcome to Mimir! Mimir is a **contextual RAG** system that makes your codebase 
 
 ## What is Mimir?
 
-Mimir ingests documentation (MDX) and source code (TypeScript, Python, and more) from GitHub repositories into a Supabase vector store. Unlike basic RAG, contextual RAG provides rich context around each code entity, including full file content, imports, and surrounding code.
+Mimir ingests documentation (MDX) and source code (TypeScript, Python, and more) from GitHub repositories into a PostgreSQL database with pgvector. Unlike basic RAG, contextual RAG provides rich context around each code entity, including full file content, imports, and surrounding code. Works with any PostgreSQL provider (Supabase, Neon, self-hosted, etc.).
 
 ## Key Features
 
@@ -22,7 +22,7 @@ Mimir ingests documentation (MDX) and source code (TypeScript, Python, and more)
 
 Get started in minutes:
 
-1. [Set up Supabase](/docs/getting-started#1-set-up-supabase)
+1. [Set up PostgreSQL Database](/docs/getting-started#step-1-set-up-postgresql-database)
 2. [Configure mimir-rag](/docs/getting-started#2-configure-mimir-rag)
 3. [Start the server](/docs/getting-started#4-start-the-server)
 4. [Ingest your first repository](/docs/getting-started#5-trigger-ingestion)
