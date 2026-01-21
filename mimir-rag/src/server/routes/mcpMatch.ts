@@ -2,12 +2,12 @@ import type { Request, Response } from "express";
 import type { Logger } from "pino";
 import type { AppConfig } from "../../config/types";
 import type { LLMClientBundle } from "../../llm/types";
-import type { SupabaseVectorStore } from "../../supabase/client";
+import type { PostgresVectorStore } from "../../database/client";
 
 export interface McpMatchRouteContext {
     config: AppConfig;
     llm: LLMClientBundle;
-    store: SupabaseVectorStore;
+    store: PostgresVectorStore;
 }
 
 interface MatchDocumentResult {
@@ -37,22 +37,18 @@ export async function handleMcpMatchRequest(
     try {
         const trimmedQuestion = question.trim();
 
-        // Embed the query
         logger.info({ question: trimmedQuestion }, "Embedding query for document matching.");
         const queryEmbedding = await context.llm.embedding.embedQuery(trimmedQuestion);
 
-        // Get configuration values
-        const supabaseConfig = context.config.supabase;
-        const desiredMatchCount = matchCount ?? supabaseConfig?.matchCount ?? 10;
-        const threshold = similarityThreshold ?? supabaseConfig?.similarityThreshold;
+        const databaseConfig = context.config.database;
+        const desiredMatchCount = matchCount ?? databaseConfig?.matchCount ?? 10;
+        const threshold = similarityThreshold ?? databaseConfig?.similarityThreshold;
 
-        // Match documents using vector search
         const matches = await context.store.matchDocuments(queryEmbedding, {
             matchCount: desiredMatchCount,
             similarityThreshold: threshold,
         });
 
-        // Transform results to safe format (no content, only metadata)
         const results: MatchDocumentResult[] = matches.map((match) => ({
             chunkTitle: match.chunkTitle,
             chunkContent: match.content,

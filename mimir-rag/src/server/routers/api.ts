@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Logger } from "pino";
 import type { AppConfig } from "../../config/types";
 import type { LLMClientBundle } from "../../llm/types";
-import type { SupabaseVectorStore } from "../../supabase/client";
+import type { PostgresVectorStore } from "../../database/client";
 import { handleHealthRequest } from "../routes/health";
 import { handleIngestRequest } from "../routes/ingest";
 import { handleChatCompletions } from "../routes/chatCompletions";
@@ -10,7 +10,7 @@ import { handleChatCompletions } from "../routes/chatCompletions";
 interface ApiRouterContext {
     config: AppConfig;
     llm: LLMClientBundle;
-    store: SupabaseVectorStore;
+    store: PostgresVectorStore;
     ingestionBusy: boolean;
     setIngestionBusy: (busy: boolean) => void;
 }

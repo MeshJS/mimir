@@ -2,13 +2,13 @@ import { Router } from "express";
 import type { Logger } from "pino";
 import type { AppConfig } from "../../config/types";
 import type { LLMClientBundle } from "../../llm/types";
-import type { SupabaseVectorStore } from "../../supabase/client";
+import type { PostgresVectorStore } from "../../database/client";
 import { handleGithubWebhookRequest, type RequestWithRawBody } from "../routes/githubWebhook";
 
 interface WebhookRouterContext {
     config: AppConfig;
     llm: LLMClientBundle;
-    store: SupabaseVectorStore;
+    store: PostgresVectorStore;
     ingestionBusy: boolean;
     setIngestionBusy: (busy: boolean) => void;
 }
