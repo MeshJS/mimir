@@ -11,10 +11,10 @@ export async function matchDocuments(
     similarityThreshold?: number
 ): Promise<RetrievedChunk[]> {
     const threshold = similarityThreshold ?? 0.75;
-    const embeddingArray = `[${embedding.join(",")}]`;
+    const embeddingString = `[${embedding.join(",")}]`;
     const result = await pool.query(
         `SELECT * FROM match_docs($1::vector, $2, $3)`,
-        [embeddingArray, matchCount, threshold]
+        [embeddingString, matchCount, threshold]
     );
 
     return result.rows.map((row: PostgresDocRow) => ({

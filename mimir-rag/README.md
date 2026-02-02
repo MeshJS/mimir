@@ -41,6 +41,7 @@ The database schema is automatically initialized when you run `make server` if y
 Provide the full PostgreSQL connection string in `.env`:
 ```bash
 MIMIR_DATABASE_URL=postgresql://user:password@host:5432/database
+# For Supabase: Use Session Pooler (port 6543) if using Docker - see README for details
 ```
 
 **Important:** The default schema uses `vector(3072)` for embeddings. If your embedding model uses a different dimension, you must update the database schema:
@@ -141,6 +142,8 @@ Key configuration variables include:
 - **Database**: `MIMIR_DATABASE_URL` (required) - PostgreSQL connection string
   
   **Note:** Update the embedding dimension in the database schema (`vector(3072)`) to match your embedding model's output dimension.
+  
+  **For Supabase users with Docker:** If your Supabase database shows "Not IPv4 compatible", use the **Session Pooler** connection string instead of the direct connection. Get it from: Supabase Dashboard → Settings → Database → Connection Pooling → Session mode (port 6543). This provides IPv4 compatibility required for Docker.
 - **GitHub** (language-agnostic code + docs ingestion): 
   - `MIMIR_GITHUB_URL` - Main repository URL (fallback if separate repos not set)
   - `MIMIR_GITHUB_CODE_URL` - Separate repository for code (TypeScript, Python, etc.) (optional)

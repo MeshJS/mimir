@@ -86,7 +86,7 @@ export async function upsertChunks(
         const chunkValues: any[] = [
             chunk.content,
             chunk.contextualText,
-            `[${chunk.embedding.join(",")}]`, // Format as PostgreSQL array for vector type
+            `[${chunk.embedding.join(",")}]`,
             chunk.filepath,
             chunk.chunkId,
             chunk.chunkTitle,
@@ -99,7 +99,13 @@ export async function upsertChunks(
             chunk.startLine ?? null,
             chunk.endLine ?? null
         ];
-        const chunkPlaceholders = chunkValues.map((_, i) => `$${values.length + i + 1}`).join(", ");
+        const chunkPlaceholders = chunkValues.map((_, i) => {
+            const paramIndex = values.length + i + 1;
+            if (i === 2) {
+                return `$${paramIndex}::vector`;
+            }
+            return `$${paramIndex}`;
+        }).join(", ");
         placeholders.push(`(${chunkPlaceholders})`);
         values.push(...chunkValues);
     });

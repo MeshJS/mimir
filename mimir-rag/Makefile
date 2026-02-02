@@ -59,7 +59,7 @@ baseline-db:
 	echo "Baselining existing database schema (marking migration as applied)..."; \
 	npx prisma migrate resolve --applied 0_init && echo "Baseline complete! You can now run 'make setup-db' or 'make server'." || echo "Note: Migration may already be marked as applied."
 
-server:
+server: setup-db
 	@if [ -f "$(CONFIG_PATH)" ]; then \
 		set -a; \
 		. "$(CONFIG_PATH)"; \

@@ -1,6 +1,7 @@
 import { config as loadDotenv } from "dotenv";
 import path from "node:path";
 import type { AppConfig, LLMProviderName, CodeRepoConfig, DocsRepoConfig } from "./types";
+import { getDatabaseUrl } from "../utils/getDatabaseUrl";
 
 const PACKAGE_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -157,7 +158,7 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
         throw new Error("Server configuration must include MIMIR_SERVER_API_KEY.");
     }
 
-    const databaseUrl = getEnv("MIMIR_DATABASE_URL");
+    const databaseUrl = getDatabaseUrl();
     const databaseTable = getEnv("MIMIR_DATABASE_TABLE", false) ?? "docs";
 
     const embeddingProvider = getEnv("MIMIR_LLM_EMBEDDING_PROVIDER") as LLMProviderName;
