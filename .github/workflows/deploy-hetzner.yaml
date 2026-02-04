@@ -35,6 +35,6 @@ jobs:
             docker run -d \
               --name mimir-rag \
               --restart unless-stopped \
-              -p 127.0.0.1:3000:3000 \
+              --network host \
               -v ~/.mimir-rag.env:/app/.env:ro \
               ${{ secrets.DOCKER_HUB_USERNAME }}/mimir-rag:latest
