@@ -34,6 +34,19 @@ docker run --rm \
   mimir-rag:latest
 ```
 
+### Database connection from Docker
+
+If the container cannot reach your database (e.g. connection timeouts or "Not IPv4 compatible" with Supabase/Neon), run the image with **host network mode**. The app then uses the host’s network and can connect to the DB without changing your connection string:
+
+```bash
+docker run --rm \
+  --network host \
+  --env-file .env \
+  mimir-rag:latest
+```
+
+With host network, the app listens on port 3000 on the host; omit `-p 3000:3000`. On Linux this usually resolves DB connection issues. On macOS/Windows, host network behaves differently—prefer the Session Pooler (port 6543) for Supabase or a connection string that works from inside the container.
+
 <div className="my-6">
   <Separator />
 </div>
@@ -79,11 +92,12 @@ Hetzner is a popular choice for deploying Mimir due to its simplicity and cost-e
    ```bash
    docker run -d \
      --name mimir-rag \
-     -p 3000:3000 \
+     --network host \
      --env-file .env \
      --restart unless-stopped \
      mimir-rag:latest
    ```
+   Using `--network host` avoids database connection issues with managed Postgres (Supabase, Neon, etc.). The server listens on port 3000 on the host; do not use `-p 3000:3000` when using host network.
 
 That's it! Your Mimir instance is now running on Hetzner.
 

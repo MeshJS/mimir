@@ -61,6 +61,10 @@ MIMIR_DATABASE_URL=postgresql://user:password@host:5432/database
 
 Your PostgreSQL connection string. Mimir uses it to connect directly to your database and store/query vector embeddings.
 
+<InfoCard>
+**Docker and managed Postgres (Supabase, Neon, etc.):** If the container cannot reach your database, run with **host network**: `docker run --rm --network host -v $(pwd)/.env:/app/.env:ro mimir-rag:local`. That uses the host's network and usually clears connection issues. Alternatively, for Supabase use the **Session Pooler** connection string (port 6543) from Dashboard → Settings → Database → Connection Pooling → Session mode.
+</InfoCard>
+
 #### Embedding Dimension
 
 The default schema uses `vector(3072)` for embeddings. If your embedding model uses a different dimension, update the database schema:

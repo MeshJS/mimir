@@ -14,11 +14,15 @@ Before you begin, make sure you have:
 - **LLM Provider**: API key for OpenAI, Anthropic, Google, or Mistral
 - **GitHub** (optional): Repository with documentation (MDX) and/or code to ingest
 
-## Step 1: Set up Supabase
+## Step 1: Set up PostgreSQL Database
 
-1. Go to [supabase.com](https://supabase.com) and create a new project
-2. Note your project URL (e.g., `https://your-project.supabase.co`)
-3. Get your database password from Project Settings → Database
+You need a PostgreSQL database with the [pgvector](https://github.com/pgvector/pgvector) extension. You can use any provider:
+
+- **[Supabase](https://supabase.com)** – Create a project, then use Settings → Database for your connection string. With Docker, use the **Session Pooler** (port 6543) if your database shows "Not IPv4 compatible".
+- **[Neon](https://neon.tech)** – Create a project and copy the connection string from the dashboard.
+- **Self-hosted** – Install PostgreSQL and the pgvector extension, then use a connection string like `postgresql://user:password@host:5432/database`.
+
+Save your connection string; you'll add it as `MIMIR_DATABASE_URL` in the next step.
 
 ## Step 2: Configure mimir-rag
 
@@ -48,7 +52,7 @@ make server
 
 The server will:
 - Load your `.env` configuration
-- Automatically set up the database schema (if `DATABASE_URL` is configured)
+- Run Prisma migrations to set up the database schema (if `MIMIR_DATABASE_URL` is set)
 - Start the API on port 3000
 
 ## Step 5: Trigger ingestion

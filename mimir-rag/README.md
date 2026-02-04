@@ -120,6 +120,19 @@ docker run --rm \
   mimir-rag:local
 ```
 
+**Run with host network (fixes DB connection issues):**
+
+If the container cannot reach your database (e.g. timeouts or "Not IPv4 compatible" with Supabase/Neon), use host network mode. The app then uses the host's network and can connect without changing your connection string:
+
+```bash
+docker run --rm \
+  --network host \
+  -v $(pwd)/.env:/app/.env:ro \
+  mimir-rag:local
+```
+
+With `--network host`, the server listens on port 3000 on the host; omit `-p 3000:3000`. On Linux this usually clears database connection problems.
+
 ### How It Works
 
 The Docker container:
@@ -154,7 +167,7 @@ Key configuration variables include:
   - **Multiple Repositories**: Use numbered variables for multiple repos:
     - `MIMIR_GITHUB_CODE_REPO_1_URL`, `MIMIR_GITHUB_CODE_REPO_1_DIRECTORY`, etc.
     - `MIMIR_GITHUB_DOCS_REPO_1_URL`, `MIMIR_GITHUB_DOCS_REPO_1_BASE_URL`, etc.
-  - See [Configuration Documentation](../mimir-docs/app/configuration) for complete details
+  - See [Configuration Documentation](../mimir-docs/content/docs/configuration.mdx) for complete details
 - **Parser**: 
   - `MIMIR_EXTRACT_VARIABLES` - Extract top-level variables (default: false)
   - `MIMIR_EXTRACT_METHODS` - Extract class methods (default: true)
