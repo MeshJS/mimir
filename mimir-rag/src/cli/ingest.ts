@@ -1,6 +1,6 @@
 import { configureLogger, getLogger } from "../utils/logger";
 import { createLLMClient } from "../llm/factory";
-import { createSupabaseStore } from "../supabase/client";
+import { createPostgresStore } from "../database/client";
 import { runIngestionPipeline, type IngestionPipelineStats } from "../ingest/pipeline";
 import { loadAppConfig, resolveConfigPath } from "../config/loadConfig";
 
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
     logger.info(`Loaded configuration from ${options.configPath}`);
 
     const llm = createLLMClient(config.llm, logger);
-    const store = createSupabaseStore(config);
+    const store = createPostgresStore(config.database);
 
     await store.verifyConnection();
 

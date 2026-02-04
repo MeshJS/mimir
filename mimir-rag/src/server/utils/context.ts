@@ -1,18 +1,18 @@
 import type { AppConfig } from "../../config/types";
 import type { LLMClientBundle } from "../../llm/types";
-import type { SupabaseVectorStore } from "../../supabase/client";
+import type { PostgresVectorStore } from "../../database/client";
 
 export interface ServerContext {
     config: AppConfig;
     llm: LLMClientBundle;
-    store: SupabaseVectorStore;
+    store: PostgresVectorStore;
     ingestionBusy: boolean;
 }
 
 export interface RouterContext {
     config: AppConfig;
     llm: LLMClientBundle;
-    store: SupabaseVectorStore;
+    store: PostgresVectorStore;
     ingestionBusy: boolean;
     setIngestionBusy: (busy: boolean) => void;
 }

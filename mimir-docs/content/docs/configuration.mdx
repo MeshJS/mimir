@@ -13,10 +13,11 @@ Configuration in Mimir is done through environment variables in a `.env` file. T
 Mimir uses environment variables organized into these categories:
 
 1. **Server Configuration** - API keys and server settings
-2. **Supabase Configuration** - Database connection and settings
+2. **Database Configuration** - PostgreSQL connection and settings
 3. **GitHub Repositories** - Where to fetch code and documentation
 4. **Parser Configuration** - What to extract from code
-5. **LLM Configuration** - Embedding and chat model settings
+5. **Documentation Configuration** - Documentation URL generation
+6. **LLM Configuration** - Embedding and chat model settings
 
 ## 1. Server Configuration
 
@@ -48,48 +49,35 @@ If webhooks fail or aren't configured, this sets up a scheduled backup that peri
   <Separator />
 </div>
 
-## 2. Supabase Configuration
+## 2. Database Configuration
 
-#### Supabase URL (required)
+Mimir works with any PostgreSQL database that supports the pgvector extension (Supabase, Neon, self-hosted, etc.).
 
-```tsx
-MIMIR_SUPABASE_URL=https://your-project.supabase.co
-```
-
-Your Supabase project's API endpoint. Mimir uses it to connect to your database and store/query vector embeddings. Find this in your Supabase dashboard under Project Settings → API → "Project URL".
-
-#### Supabase Service Role Key (required)
+#### Database URL (required)
 
 ```tsx
-MIMIR_SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+MIMIR_DATABASE_URL=postgresql://user:password@host:5432/database
 ```
 
-This key gives Mimir full access to your Supabase database. It's needed to create tables, insert embeddings, and perform vector searches. Find it in Supabase dashboard → Project Settings → API → "service_role" key (not the "anon" key).
+Your PostgreSQL connection string. Mimir uses it to connect directly to your database and store/query vector embeddings.
 
-**⚠️ Security Note:** This key has full database access. Never commit it to version control or expose it publicly.
+<InfoCard>
+**Docker and managed Postgres (Supabase, Neon, etc.):** If the container cannot reach your database, run with **host network**: `docker run --rm --network host -v $(pwd)/.env:/app/.env:ro mimir-rag:local`. That uses the host's network and usually clears connection issues. Alternatively, for Supabase use the **Session Pooler** connection string (port 6543) from Dashboard → Settings → Database → Connection Pooling → Session mode.
+</InfoCard>
 
-#### Supabase Table (optional)
+#### Embedding Dimension
 
-```tsx
-MIMIR_SUPABASE_TABLE=docs
-```
+The default schema uses `vector(3072)` for embeddings. If your embedding model uses a different dimension, update the database schema:
 
-**Default:** `"docs"`
-
-Specifies which table in your Supabase database stores the document chunks. Use different table names if you have multiple Mimir instances or want to separate different documentation sets.
-
-#### Supabase Database Password (optional)
-
-```tsx
-MIMIR_SUPABASE_DB_PASSWORD=your-database-password
-```
-
-Mimir can automatically construct the full database connection URL from your Supabase URL and password. If provided, Mimir combines this with `MIMIR_SUPABASE_URL` to create `DATABASE_URL` automatically.
+1. Check your embedding model's dimension (e.g., OpenAI `text-embedding-3-small` uses 1536, `text-embedding-3-large` uses 3072)
+2. Update `prisma/migrations/0_init/migration.sql` to change `vector(3072)` to your model's dimension
+3. Update `prisma/schema.prisma` to change `Unsupported("vector(3072)")` to match
+4. Run migrations: `make setup-db`
 
 #### Similarity Threshold (optional)
 
 ```tsx
-MIMIR_SUPABASE_SIMILARITY_THRESHOLD=0.2
+MIMIR_DATABASE_SIMILARITY_THRESHOLD=0.2
 ```
 
 **Default:** `0.2`  
@@ -100,12 +88,32 @@ Controls how similar a document chunk must be to your query to be included in re
 #### Match Count (optional)
 
 ```tsx
-MIMIR_SUPABASE_MATCH_COUNT=10
+MIMIR_DATABASE_MATCH_COUNT=10
 ```
 
 **Default:** `10`
 
-Limits how many document chunks are returned per query. More chunks provide more context but increase API costs and response time. Fewer chunks are faster but may miss relevant information.
+Limits how many document chunks are returned per query from vector search. More chunks provide more context but increase API costs and response time. Fewer chunks are faster but may miss relevant information.
+
+#### BM25 Match Count (optional)
+
+```tsx
+MIMIR_DATABASE_BM25_MATCH_COUNT=10
+```
+
+**Default:** `10`
+
+Limits how many document chunks are returned per query from full-text (BM25) search. Used when hybrid search is enabled.
+
+#### Enable Hybrid Search (optional)
+
+```tsx
+MIMIR_DATABASE_ENABLE_HYBRID_SEARCH=true
+```
+
+**Default:** `true`
+
+When enabled, combines vector similarity search with full-text (BM25) search for better results. Disable if you only want vector search.
 
 <div className="my-6">
   <Separator />
@@ -117,7 +125,7 @@ Mimir fetches code and documentation from GitHub repositories. You can configure
 
 ### Single Repository
 
-For most projects, start with a single repository:
+For most projects, start with a single repository that contains both code and documentation:
 
 ```tsx
 MIMIR_GITHUB_URL=https://github.com/your-org/your-repo
@@ -126,7 +134,7 @@ MIMIR_GITHUB_TOKEN=ghp_your_token_here
 ```
 
 <InfoCard>
-**MIMIR_GITHUB_URL:** The main repository URL. Mimir will fetch both code and documentation from here.
+**MIMIR_GITHUB_URL:** The main repository URL. Mimir will fetch both code and documentation from here. Required for single-repo setup. Optional if using separate code/docs repos or multiple repos.
 </InfoCard>
 
 <InfoCard>
@@ -137,12 +145,20 @@ MIMIR_GITHUB_TOKEN=ghp_your_token_here
 **MIMIR_GITHUB_TOKEN:** GitHub personal access token. Required for private repositories or to avoid rate limits on public repos.
 </InfoCard>
 
+<InfoCard>
+**MIMIR_GITHUB_DIRECTORY:** Base directory to start from in the main repo. Optional.
+</InfoCard>
+
+<InfoCard>
+**MIMIR_GITHUB_INCLUDE_DIRECTORIES:** Comma-separated list of directories to include from the main repo. Optional.
+</InfoCard>
+
 ### Separate Code and Documentation Repos
 
-If your code and docs are in different repositories:
+If your code and docs are in different repositories, use separate configuration:
 
 ```tsx
-# Code repository (TypeScript, Python, etc.)
+# Code repository (TypeScript, Python, Rust, etc.)
 MIMIR_GITHUB_CODE_URL=https://github.com/your-org/code-repo
 MIMIR_GITHUB_CODE_DIRECTORY=src
 MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES=src,lib
@@ -152,6 +168,8 @@ MIMIR_GITHUB_DOCS_URL=https://github.com/your-org/docs-repo
 MIMIR_GITHUB_DOCS_DIRECTORY=docs
 MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES=docs,guides
 ```
+
+**Note:** When using `MIMIR_GITHUB_CODE_URL` or `MIMIR_GITHUB_DOCS_URL`, those take precedence over `MIMIR_GITHUB_URL` for that type. `MIMIR_GITHUB_URL` is used as a fallback if neither `MIMIR_GITHUB_CODE_URL` nor `MIMIR_GITHUB_DOCS_URL` is set.
 
 <InfoCard>
 **DIRECTORY:** Base directory to start from. If your code is in `src/`, set this to `src` to avoid indexing root-level files.
@@ -163,7 +181,7 @@ MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES=docs,guides
 
 ### Multiple Repositories
 
-For larger projects with multiple codebases or documentation sources:
+For larger projects with multiple codebases or documentation sources, use numbered environment variables:
 
 ```tsx
 # ============================================
@@ -182,12 +200,15 @@ MIMIR_GITHUB_CODE_REPO_2_DIRECTORY=packages
 # ============================================
 MIMIR_GITHUB_DOCS_REPO_1_URL=https://github.com/your-org/docs1
 MIMIR_GITHUB_DOCS_REPO_1_DIRECTORY=docs
+MIMIR_GITHUB_DOCS_REPO_1_INCLUDE_DIRECTORIES=docs,guides
 MIMIR_GITHUB_DOCS_REPO_1_BASE_URL=https://docs.example.com
 MIMIR_GITHUB_DOCS_REPO_1_CONTENT_PATH=content/docs
 
 MIMIR_GITHUB_DOCS_REPO_2_URL=https://github.com/your-org/docs2
 MIMIR_GITHUB_DOCS_REPO_2_BASE_URL=https://docs2.example.com
 ```
+
+**Note:** When using multiple repos (numbered variables), the single-repo variables (`MIMIR_GITHUB_CODE_URL`, `MIMIR_GITHUB_DOCS_URL`) are ignored. Number repos starting from 1 and increment sequentially (1, 2, 3, etc.). Each repo can have its own `DIRECTORY`, `INCLUDE_DIRECTORIES`, and `EXCLUDE_PATTERNS` settings.
 
 <InfoCard>
 **EXCLUDE_PATTERNS:** Comma-separated patterns to skip. Useful for excluding test files, build artifacts, or generated code.
@@ -243,11 +264,43 @@ Prevents test files and other non-production code from being indexed. This keeps
 
 Common test patterns are excluded automatically if not specified.
 
+#### Include Directories (optional)
+
+```tsx
+MIMIR_GITHUB_INCLUDE_DIRECTORIES=src,lib,packages
+```
+
+Comma-separated list of directories to include when parsing. Only files in these directories will be indexed. Useful for large repositories where you only want specific folders.
+
 <div className="my-6">
   <Separator />
 </div>
 
-## 5. LLM Configuration
+## 5. Documentation Configuration (Optional)
+
+Configure how documentation URLs are generated in search results.
+
+#### Documentation Base URL (optional)
+
+```tsx
+MIMIR_DOCS_BASE_URL=https://docs.example.com
+```
+
+The base URL where your documentation is hosted. Used to generate clickable links in search results when repository paths don't have per-repo `BASE_URL` configured.
+
+#### Documentation Content Path (optional)
+
+```tsx
+MIMIR_DOCS_CONTENT_PATH=content/docs
+```
+
+The path prefix in your repository where documentation content lives. Used to correctly map repository paths to documentation URLs.
+
+<div className="my-6">
+  <Separator />
+</div>
+
+## 6. LLM Configuration
 
 Mimir uses LLMs for two purposes: creating embeddings (vector representations) and generating chat responses. You can use different providers for each.
 
@@ -331,6 +384,25 @@ MIMIR_LLM_CHAT_TEMPERATURE=0
 
 Controls randomness (0.0 to 2.0). Lower values (0-0.3) give more deterministic, factual answers. Higher values (0.7-1.0) give more creative responses.
 
+#### Chat Max Output Tokens (optional)
+
+```tsx
+MIMIR_LLM_CHAT_MAX_OUTPUT_TOKENS=8000
+```
+
+**Default:** `8000`
+
+Maximum number of tokens the chat model can generate in a single response. Increase for longer responses, decrease to limit response length.
+
+#### Custom Base URLs (optional)
+
+```tsx
+MIMIR_LLM_EMBEDDING_BASE_URL=https://api.openai.com/v1
+MIMIR_LLM_CHAT_BASE_URL=https://api.openai.com/v1
+```
+
+Override the default API base URL for your LLM provider. Useful for self-hosted models or custom API endpoints.
+
 ### Mixing Providers
 
 You can use different providers for embeddings and chat:
@@ -349,21 +421,14 @@ This allows you to optimize for cost (cheap embeddings) and quality (better chat
 
 ## Complete Example
 
-Here's a complete `.env` file example with all common settings:
+Here's a minimal `.env` file example with required settings:
 
 ```tsx
 # Server (Required)
 MIMIR_SERVER_API_KEY=your-generated-api-key
 
-# Supabase (Required)
-MIMIR_SUPABASE_URL=https://your-project.supabase.co
-MIMIR_SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-
-# Supabase (Optional)
-MIMIR_SUPABASE_DB_PASSWORD=your-db-password
-MIMIR_SUPABASE_TABLE=docs
-MIMIR_SUPABASE_SIMILARITY_THRESHOLD=0.2
-MIMIR_SUPABASE_MATCH_COUNT=10
+# Database (Required)
+MIMIR_DATABASE_URL=postgresql://user:password@host:5432/database
 
 # GitHub - Single Repository
 MIMIR_GITHUB_URL=https://github.com/your-org/your-repo
@@ -379,8 +444,9 @@ MIMIR_LLM_EMBEDDING_API_KEY=sk-your-openai-key
 MIMIR_LLM_CHAT_PROVIDER=openai
 MIMIR_LLM_CHAT_MODEL=gpt-4
 MIMIR_LLM_CHAT_API_KEY=sk-your-openai-key
-MIMIR_LLM_CHAT_TEMPERATURE=0
 ```
+
+For a complete example with all optional settings, see `.env.example` in the mimir-rag directory.
 
 ## Next Steps
 

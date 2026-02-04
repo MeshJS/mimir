@@ -4,12 +4,12 @@ import { createUIMessageStream, pipeUIMessageStreamToResponse } from "ai";
 import { askAi } from "../../query/askAi";
 import type { AppConfig } from "../../config/types";
 import type { LLMClientBundle } from "../../llm/types";
-import type { SupabaseVectorStore } from "../../supabase/client";
+import type { PostgresVectorStore } from "../../database/client";
 
 export interface ChatCompletionsContext {
     config: AppConfig;
     llm: LLMClientBundle;
-    store: SupabaseVectorStore;
+    store: PostgresVectorStore;
 }
 
 interface OpenAIMessage {
@@ -24,12 +24,10 @@ interface OpenAIChatRequest {
     stream?: boolean;
     temperature?: number;
     max_tokens?: number;
-    // Custom parameters for RAG
     matchCount?: number;
     similarityThreshold?: number;
 }
 
-// Helper to extract text content from a message (supports both OpenAI and AI SDK formats)
 function getMessageContent(message: OpenAIMessage): string {
     if (message.parts) {
         return message.parts
@@ -116,7 +114,6 @@ export async function handleChatCompletions(
     const isStreaming = body.stream === true;
 
     if (isStreaming) {
-        // Streaming response using AI SDK data stream protocol
         const abortController = new AbortController();
 
         const closeHandler = (): void => {
@@ -143,7 +140,6 @@ export async function handleChatCompletions(
                 }
             );
 
-            // Create AI SDK UI Message Stream
             const stream = createUIMessageStream({
                 execute: async ({ writer }) => {
                     try {
@@ -201,7 +197,6 @@ export async function handleChatCompletions(
                 },
             });
 
-            // Pipe the UI message stream to the response
             pipeUIMessageStreamToResponse({
                 stream,
                 response: res,
@@ -225,7 +220,6 @@ export async function handleChatCompletions(
             }
         }
     } else {
-        // Non-streaming response
         try {
             const response = await askAi(
                 context.llm,

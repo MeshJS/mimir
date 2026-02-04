@@ -1,6 +1,6 @@
 import type { AppConfig } from "../config/types";
 import type { LLMClientBundle } from "../llm/types";
-import type { SupabaseVectorStore } from "../supabase/client";
+import type { PostgresVectorStore } from "../database/client";
 import type { RetrievedChunk } from "../supabase/types";
 import type { Logger } from "pino";
 import { getLogger } from "../utils/logger";
@@ -70,8 +70,6 @@ function buildSourcesFromChunks(chunks: RetrievedChunk[]): AskAiSource[] {
         let effectiveFinalUrl = finalUrl ?? docsUrl ?? githubUrl ?? filepath;
 
         if (!isDocFile && effectiveGithubUrl && hasLineInfo) {
-            // Build a line-anchored GitHub URL for code entities
-            // Strip any existing anchor (slug) from githubUrl before appending line anchor
             const baseUrl = effectiveGithubUrl.split('#')[0];
             const anchor =
                 startLine === endLine
@@ -79,7 +77,6 @@ function buildSourcesFromChunks(chunks: RetrievedChunk[]): AskAiSource[] {
                     : `#L${startLine}-L${endLine}`;
             effectiveFinalUrl = `${baseUrl}${anchor}`;
         } else if (isDocFile && effectiveDocsUrl) {
-            // For docs, prefer the hosted docs URL
             effectiveFinalUrl = effectiveDocsUrl;
         }
 
@@ -97,7 +94,6 @@ function buildSourcesFromChunks(chunks: RetrievedChunk[]): AskAiSource[] {
 }
 
 
-// Maps AI-reported sources back to actual chunks
 function mapAiSourcesToChunks(
     aiSources: Array<{ filepath: string; chunkTitle: string; url?: string }>,
     allMatches: RetrievedChunk[]
@@ -130,27 +126,27 @@ function mapAiSourcesToChunks(
 
 export async function askAi(
     llm: LLMClientBundle,
-    store: SupabaseVectorStore,
+    store: PostgresVectorStore,
     options: AskAiOptions & { stream?: false },
     context?: AskAiContextOptions
 ): Promise<AskAiResult>;
 
 export async function askAi(
     llm: LLMClientBundle,
-    store: SupabaseVectorStore,
+    store: PostgresVectorStore,
     options: AskAiOptions & { stream: true },
     context?: AskAiContextOptions
 ): Promise<AskAiStreamResult>;
 
 export async function askAi(
     llm: LLMClientBundle,
-    store: SupabaseVectorStore,
+    store: PostgresVectorStore,
     options: AskAiOptions,
     context?: AskAiContextOptions
 ): Promise<AskAiResult | AskAiStreamResult> {
     const activeLogger = context?.logger ?? getLogger();
     const trimmedQuestion = options.question.trim();
-    const supabaseConfig = context?.config?.supabase;
+    const databaseConfig = context?.config?.database;
 
     if (!trimmedQuestion) {
         throw new Error("Question cannot be empty.");
@@ -159,9 +155,9 @@ export async function askAi(
     activeLogger.info({ question: trimmedQuestion }, "Embedding query.");
     const queryEmbedding = await llm.embedding.embedQuery(trimmedQuestion, { signal: options.signal });
 
-    activeLogger.info("Retrieving similar chunks from Supabase.");
-    const desiredMatchCount = options.matchCount ?? supabaseConfig?.matchCount ?? 10;
-    const similarityThreshold = options.similarityThreshold ?? supabaseConfig?.similarityThreshold;
+    activeLogger.info("Retrieving similar chunks from database.");
+    const desiredMatchCount = options.matchCount ?? databaseConfig?.matchCount ?? 10;
+    const similarityThreshold = options.similarityThreshold ?? databaseConfig?.similarityThreshold;
 
     const vectorMatches = await store.matchDocuments(queryEmbedding, {
         matchCount: desiredMatchCount,
@@ -169,11 +165,11 @@ export async function askAi(
     });
 
     let keywordMatches: RetrievedChunk[] = [];
-    const hybridConfigEnabled = supabaseConfig?.enableHybridSearch ?? true;
+    const hybridConfigEnabled = databaseConfig?.enableHybridSearch ?? true;
     const shouldUseHybrid = options.enableHybridSearch ?? hybridConfigEnabled;
 
     if (shouldUseHybrid) {
-        const bm25MatchCount = options.bm25MatchCount ?? supabaseConfig?.bm25MatchCount ?? desiredMatchCount;
+        const bm25MatchCount = options.bm25MatchCount ?? databaseConfig?.bm25MatchCount ?? desiredMatchCount;
         try {
             keywordMatches = await store.searchDocumentsFullText(trimmedQuestion, {
                 matchCount: bm25MatchCount,
@@ -199,7 +195,6 @@ export async function askAi(
     activeLogger.info({ matchCount: matches.length }, "Generating answer with retrieved context.");
 
     if (options.stream) {
-        // Streaming mode
         const resultStream = await llm.chat.generateAnswer({
             prompt: trimmedQuestion,
             context: matches,
@@ -208,8 +203,6 @@ export async function askAi(
             signal: options.signal,
         });
 
-        // Convert structured stream to text stream and collect sources
-        // partialObjectStream sends cumulative updates, so we need to track what we've sent
         let previousAnswer = "";
         const collectedSources: AskAiSource[] = [];
 
@@ -223,7 +216,6 @@ export async function askAi(
                     }
                 }
                 if (chunk.sources && chunk.sources.length > 0) {
-                    // Use only the sources that the AI actually reported using
                     collectedSources.length = 0;
                     collectedSources.push(...mapAiSourcesToChunks(chunk.sources, matches));
                 }
@@ -233,7 +225,6 @@ export async function askAi(
         return { stream: textStreamGenerator(), sources: collectedSources };
     }
 
-    // Non-streaming mode
     const result = await llm.chat.generateAnswer({
         prompt: trimmedQuestion,
         context: matches,
@@ -242,7 +233,6 @@ export async function askAi(
         signal: options.signal,
     });
 
-    // Use only the sources that the AI actually reported using
     const sources: AskAiSource[] = result.sources && result.sources.length > 0
         ? mapAiSourcesToChunks(result.sources, matches)
         : [];

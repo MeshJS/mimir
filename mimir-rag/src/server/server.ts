@@ -3,7 +3,7 @@ import express from "express";
 import { loadAppConfig } from "../config/loadConfig";
 import { configureLogger, getLogger } from "../utils/logger";
 import { createLLMClient } from "../llm/factory";
-import { createSupabaseStore } from "../supabase/client";
+import { createPostgresStore } from "../database/client";
 import { createApiKeyMiddleware } from "./middleware/apiKey";
 import { type RequestWithRawBody } from "./routes/githubWebhook";
 import { createApiRouter } from "./routers/api";
@@ -33,7 +33,7 @@ async function createContext(configPath?: string): Promise<ServerContext> {
     logger.info("Loaded server configuration.");
 
     const llm = createLLMClient(config.llm, logger);
-    const store = createSupabaseStore(config);
+    const store = createPostgresStore(config.database);
     await store.verifyConnection();
 
     return {
@@ -58,7 +58,6 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
     app.use(express.urlencoded({ extended: true, verify: verifyRawBody }));
     app.use(applyCors);
 
-    // Apply API key middleware to all routes except /mcp/*, /webhook/*, and /health endpoints
     const apiKeyMiddleware = createApiKeyMiddleware(context.config.server.apiKey);
     app.use((req: any, res: any, next: any) => {
         if (req.path.startsWith('/mcp/') || req.path.startsWith('/webhook/') || req.path === '/health') {
@@ -68,16 +67,10 @@ export async function createServer(options: ServerOptions = {}): Promise<{ app: 
         }
     });
 
-    // Prepare router context
     const routerContext = createRouterContext(context);
 
-    // API routes (require API key)
     app.use(createApiRouter(routerContext, logger));
-
-    // MCP routes (no API key required)
     app.use('/mcp', createMcpRouter(routerContext, logger));
-
-    // Webhook routes (no API key required)
     app.use('/webhook', createWebhookRouter(routerContext, logger));
 
     return { app, context };

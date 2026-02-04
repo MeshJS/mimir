@@ -1,48 +1,38 @@
 #!/bin/sh
 set -eu
 
-SETUP_SQL="/app/src/supabase/setup.sql"
 ENV_FILE="/app/.env"
 
-# Load environment variables from .env file if it exists
 if [ -f "$ENV_FILE" ]; then
     echo "[entrypoint] Loading environment from $ENV_FILE"
-    set -a  # automatically export all variables
+    set -a
     . "$ENV_FILE"
     set +a
 fi
 
-# Extract database URL and password from Supabase URL if not already set
-if [ -z "${DATABASE_URL:-}" ] && [ -n "${MIMIR_SUPABASE_URL:-}" ]; then
-    # Try to construct DATABASE_URL from MIMIR_SUPABASE_URL
-    # Supabase URL format: https://xxx.supabase.co
-    # Database URL format: postgresql://postgres:[password]@db.xxx.supabase.co:5432/postgres
-    SUPABASE_PROJECT=$(echo "$MIMIR_SUPABASE_URL" | sed -E 's|https://([^.]+)\.supabase\.co.*|\1|')
-    if [ -n "${MIMIR_SUPABASE_DB_PASSWORD:-}" ]; then
-        DATABASE_URL="postgresql://postgres:${MIMIR_SUPABASE_DB_PASSWORD}@db.${SUPABASE_PROJECT}.supabase.co:5432/postgres"
-        echo "[entrypoint] Constructed DATABASE_URL from MIMIR_SUPABASE_URL"
+if [ -z "${DATABASE_URL:-}" ]; then
+    if [ -n "${MIMIR_DATABASE_URL:-}" ]; then
+        DATABASE_URL="${MIMIR_DATABASE_URL}"
+        echo "[entrypoint] Using MIMIR_DATABASE_URL"
     fi
 fi
 
-maybe_run_setup() {
-    if [ -z "${DATABASE_URL:-}" ]; then
-        echo "[entrypoint] DATABASE_URL not set; skipping schema bootstrap."
-        echo "[entrypoint] To enable automatic schema setup, set DATABASE_URL or MIMIR_SUPABASE_URL + MIMIR_SUPABASE_DB_PASSWORD in your .env file"
-        return
-    fi
-
-    if [ ! -f "$SETUP_SQL" ]; then
-        echo "[entrypoint] Setup SQL file not found at $SETUP_SQL; skipping."
-        return
-    fi
-
-    echo "[entrypoint] Running Supabase setup SQL..."
-    if psql "$DATABASE_URL" -f "$SETUP_SQL" 2>&1; then
-        echo "[entrypoint] Database setup completed successfully"
+if [ -n "${DATABASE_URL:-}" ]; then
+    echo "[entrypoint] Running Prisma migrations..."
+    export DATABASE_URL
+    if npx prisma migrate deploy 2>&1; then
+        echo "[entrypoint] Database migrations completed successfully"
     else
-        echo "[entrypoint] Warning: Database setup failed (this is normal if schema already exists)"
+        echo "[entrypoint] Warning: Prisma migrate deploy failed, trying db push..."
+        if npx prisma db push 2>&1; then
+            echo "[entrypoint] Database schema pushed successfully"
+        else
+            echo "[entrypoint] Warning: Database setup failed (this is normal if schema already exists)"
+        fi
     fi
-}
+else
+    echo "[entrypoint] DATABASE_URL not set; skipping schema bootstrap."
+    echo "[entrypoint] To enable automatic schema setup, set DATABASE_URL or MIMIR_DATABASE_URL in your .env file"
+fi
 
-maybe_run_setup
 exec "$@"

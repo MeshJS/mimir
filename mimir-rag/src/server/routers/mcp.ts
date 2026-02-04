@@ -2,13 +2,13 @@ import { Router } from "express";
 import type { Logger } from "pino";
 import type { AppConfig } from "../../config/types";
 import type { LLMClientBundle } from "../../llm/types";
-import type { SupabaseVectorStore } from "../../supabase/client";
+import type { PostgresVectorStore } from "../../database/client";
 import { handleMcpMatchRequest } from "../routes/mcpMatch";
 
 interface McpRouterContext {
     config: AppConfig;
     llm: LLMClientBundle;
-    store: SupabaseVectorStore;
+    store: PostgresVectorStore;
 }
 
 export function createMcpRouter(context: McpRouterContext, logger: Logger): Router {

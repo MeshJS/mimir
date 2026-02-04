@@ -60,7 +60,6 @@ interface RustAstResult {
     entities: RustAstEntity[];
 }
 
-// Lazy-loaded parser instance
 let parserInstance: Parser | null = null;
 let parserLoadPromise: Promise<Parser> | null = null;
 
@@ -74,10 +73,8 @@ async function getParser(): Promise<Parser> {
     }
 
     parserLoadPromise = (async () => {
-        // Initialize WebAssembly module before loading languages
         await Parser.init();
         
-        // Load Rust language from WASM file
         const rustWasmPath = path.join(__dirname, "../../../node_modules/tree-sitter-rust/tree-sitter-rust.wasm");
         const RustLang = await Language.load(rustWasmPath);
         const parser = new Parser();
@@ -100,11 +97,7 @@ export async function parseRustFile(
 
     const entities: RustEntity[] = [];
 
-    // Only add module-level entity if there are no individual entities
-    // This prevents duplication and poor chunking when individual functions/structs/traits exist
-    // The module entity is only useful when the file contains only module-level code
     if (content.trim().length > 0 && astResult.entities.length === 0) {
-        // Calculate endLine correctly: count newlines and handle trailing newline
         const newlineCount = (content.match(/\n/g) || []).length;
         const endLine = content.endsWith("\n") ? newlineCount : newlineCount + 1;
         
@@ -155,12 +148,9 @@ export async function parseRustFile(
 }
 
 function extractDocComment(node: Node, content: string): string | undefined {
-    // Rust uses /// for doc comments
-    // Look for preceding doc comments
     const startIndex = node.startIndex;
     let docLines: string[] = [];
     
-    // Search backwards for doc comments
     let searchIndex = startIndex - 1;
     while (searchIndex >= 0) {
         const char = content[searchIndex];
@@ -170,17 +160,13 @@ function extractDocComment(node: Node, content: string): string | undefined {
             const line = content.substring(lineStart, lineEnd).trim();
             
             if (line.startsWith('///')) {
-                // Remove /// and trim
                 const docLine = line.substring(3).trim();
                 docLines.unshift(docLine);
             } else if (line.startsWith('//!')) {
-                // Module-level doc comment
                 const docLine = line.substring(3).trim();
                 docLines.unshift(docLine);
             } else if (line === '' || line.startsWith('//')) {
-                // Regular comment or blank line, continue searching
             } else {
-                // Non-comment line, stop
                 break;
             }
             
@@ -189,7 +175,6 @@ function extractDocComment(node: Node, content: string): string | undefined {
             searchIndex--;
         }
         
-        // Limit search to avoid going too far back
         if (startIndex - searchIndex > 1000) break;
     }
     
@@ -199,7 +184,6 @@ function extractDocComment(node: Node, content: string): string | undefined {
 function extractParameters(node: Node, content: string): string {
     const parameters = node.childForFieldName("parameters");
     if (!parameters) {
-        // Try to find parameter list in function signature
         const signature = node.childForFieldName("signature");
         if (signature) {
             const params = signature.childForFieldName("parameters");
@@ -218,7 +202,6 @@ function extractParameters(node: Node, content: string): string {
 }
 
 function extractReturnType(node: Node, content: string): string | undefined {
-    // Rust return type is in the signature
     const signature = node.childForFieldName("signature");
     if (signature) {
         const returnType = signature.childForFieldName("return_type");
@@ -242,7 +225,6 @@ function extractName(node: Node): string | undefined {
     if (nameNode) {
         return nameNode.text;
     }
-    // Fallback: look for identifier in children
     for (let i = 0; i < node.childCount; i++) {
         const child = node.child(i);
         if (child && child.type === "identifier") {
@@ -253,13 +235,11 @@ function extractName(node: Node): string | undefined {
 }
 
 function isPublic(node: Node): boolean {
-    // Check for pub keyword in modifiers
     for (let i = 0; i < node.childCount; i++) {
         const child = node.child(i);
         if (child && child.type === "visibility_modifier") {
             return true;
         }
-        // Also check for pub keyword directly
         if (child && child.type === "pub") {
             return true;
         }
@@ -275,13 +255,11 @@ function traverseTree(
 ): void {
     const nodeType = node.type;
 
-    // Handle use statements (imports)
     if (nodeType === "use_declaration") {
         result.imports.push(extractUseStatement(node, content));
         return;
     }
 
-    // Handle function definitions
     if (nodeType === "function_item") {
         const name = extractName(node);
         if (!name) return;
@@ -297,8 +275,8 @@ function traverseTree(
             kind: "function", // Rust functions are always "function" type, even when inside impl blocks
             name,
             parent: parentStruct,
-            startLine: startRow + 1, // tree-sitter uses 0-based, we use 1-based
-            endLine: endRow, // endPosition.row is 0-based exclusive (points to line after), which equals 1-based inclusive
+            startLine: startRow + 1,
+            endLine: endRow,
             docstring,
             parameters,
             returnType,
@@ -307,7 +285,6 @@ function traverseTree(
         return;
     }
 
-    // Handle struct definitions
     if (nodeType === "struct_item") {
         const name = extractName(node);
         if (!name) return;
@@ -328,7 +305,6 @@ function traverseTree(
         return;
     }
 
-    // Handle impl blocks
     if (nodeType === "impl_item") {
         const typeNode = node.childForFieldName("type");
         const traitNode = node.childForFieldName("trait");
@@ -340,7 +316,6 @@ function traverseTree(
         const docstring = extractDocComment(node, content);
         const isExported = isPublic(node);
 
-        // Create impl entity
         const implName = structName ? (traitName ? `${structName}::${traitName}` : structName) : "impl";
         result.entities.push({
             kind: "impl",
@@ -351,7 +326,6 @@ function traverseTree(
             isExported,
         });
 
-        // Traverse impl body to find methods
         const body = node.childForFieldName("body");
         if (body) {
             for (let i = 0; i < body.childCount; i++) {
@@ -364,7 +338,6 @@ function traverseTree(
         return;
     }
 
-    // Handle trait definitions
     if (nodeType === "trait_item") {
         const traitName = extractName(node);
         if (!traitName) return;
@@ -383,21 +356,11 @@ function traverseTree(
             isExported,
         });
 
-        // Traverse trait body to find method signatures
-        // Trait methods can be:
-        // 1. associated_function (method signatures without bodies) - this is the main case
-        // 2. function_item (default implementations with bodies)
-        // 3. Other associated items (types, constants, etc.)
         const body = node.childForFieldName("body");
         if (body) {
             for (let i = 0; i < body.childCount; i++) {
                 const child = body.child(i);
                 if (child) {
-                    // Handle trait method signatures (without bodies)
-                    // Tree-sitter-rust uses different node types for trait methods:
-                    // - associated_function: trait method signatures
-                    // - function_signature_item: alternative node type
-                    // - function_item: default implementations with bodies
                     const isTraitMethodSignature = 
                         child.type === "associated_function" || 
                         child.type === "function_signature_item" ||
@@ -424,10 +387,9 @@ function traverseTree(
                                 returnType,
                                 isExported,
                             });
-                            continue; // Skip recursive traversal for this node
+                            continue;
                         }
                     }
-                    // Handle associated types in traits (type MyType;)
                     if (child.type === "associated_type") {
                         const typeName = extractName(child);
                         if (typeName) {
@@ -449,7 +411,6 @@ function traverseTree(
                         }
                     }
 
-                    // Handle associated constants in traits (const MY_CONST: Type;)
                     if (child.type === "associated_const") {
                         const constName = extractName(child);
                         if (constName) {
@@ -471,8 +432,6 @@ function traverseTree(
                         }
                     }
 
-                    // Also handle function_item (for default implementations in traits)
-                    // Recursively traverse all children to catch any other patterns
                     traverseTree(child, content, result, traitName);
                 }
             }
@@ -480,7 +439,6 @@ function traverseTree(
         return;
     }
 
-    // Handle enum definitions
     if (nodeType === "enum_item") {
         const enumName = extractName(node);
         if (!enumName) return;
@@ -499,7 +457,6 @@ function traverseTree(
             isExported,
         });
 
-        // Extract individual enum variants
         const body = node.childForFieldName("body");
         if (body) {
             for (let i = 0; i < body.childCount; i++) {
@@ -527,7 +484,6 @@ function traverseTree(
         return;
     }
 
-    // Handle type aliases
     if (nodeType === "type_item") {
         const name = extractName(node);
         if (!name) return;
@@ -548,7 +504,6 @@ function traverseTree(
         return;
     }
 
-    // Handle const declarations
     if (nodeType === "const_item") {
         const name = extractName(node);
         if (!name) return;
@@ -569,7 +524,6 @@ function traverseTree(
         return;
     }
 
-    // Handle static declarations
     if (nodeType === "static_item") {
         const name = extractName(node);
         if (!name) return;
@@ -590,7 +544,6 @@ function traverseTree(
         return;
     }
 
-    // Handle macro definitions (macro_rules!)
     if (nodeType === "macro_definition" || nodeType === "macro_rules") {
         const name = extractName(node);
         if (!name) return;
@@ -611,7 +564,6 @@ function traverseTree(
         return;
     }
 
-    // Handle module declarations (mod my_module; or mod my_module { ... })
     if (nodeType === "mod_item") {
         const name = extractName(node);
         if (!name) return;
@@ -633,7 +585,6 @@ function traverseTree(
         return;
     }
 
-    // Handle union types
     if (nodeType === "union_item") {
         const name = extractName(node);
         if (!name) return;
@@ -663,7 +614,6 @@ function traverseTree(
         }
     }
 
-    // Recursively traverse children
     for (let i = 0; i < node.childCount; i++) {
         const child = node.child(i);
         if (child) {
@@ -687,7 +637,6 @@ async function runRustAstAnalysis(filepath: string, content: string): Promise<Ru
             entities: [],
         };
 
-        // Extract module doc from leading comments
         const lines = content.split('\n');
         const moduleDocLines: string[] = [];
         for (const line of lines) {
@@ -695,13 +644,10 @@ async function runRustAstAnalysis(filepath: string, content: string): Promise<Ru
             if (trimmed.startsWith('//!')) {
                 moduleDocLines.push(trimmed.substring(3).trim());
             } else if (trimmed.startsWith('///') && moduleDocLines.length > 0) {
-                // Continue doc comment
                 moduleDocLines.push(trimmed.substring(3).trim());
             } else if (trimmed === '' && moduleDocLines.length > 0) {
-                // Blank line in doc comment
                 continue;
             } else {
-                // Non-doc line, stop
                 break;
             }
         }
@@ -709,12 +655,10 @@ async function runRustAstAnalysis(filepath: string, content: string): Promise<Ru
             result.moduleDoc = moduleDocLines.join('\n');
         }
 
-        // Traverse the tree starting from the root
         traverseTree(tree.rootNode, content, result);
 
         return result;
     } catch (error) {
-        // Fallback: return empty result if parsing fails
         console.warn(`Failed to parse Rust file ${filepath}:`, error);
         return { imports: [], moduleDoc: undefined, entities: [] };
     }

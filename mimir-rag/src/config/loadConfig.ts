@@ -1,6 +1,7 @@
 import { config as loadDotenv } from "dotenv";
 import path from "node:path";
 import type { AppConfig, LLMProviderName, CodeRepoConfig, DocsRepoConfig } from "./types";
+import { getDatabaseUrl } from "../utils/getDatabaseUrl";
 
 const PACKAGE_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -47,15 +48,10 @@ export function resolveConfigPath(providedPath?: string): string {
     return path.join(PACKAGE_ROOT, ".env");
 }
 
-/**
- * Parse numbered code repository environment variables
- * Scans for MIMIR_GITHUB_CODE_REPO_{N}_URL patterns and collects all related config
- */
 function parseCodeRepos(): CodeRepoConfig[] {
     const repos: CodeRepoConfig[] = [];
     const repoNumbers = new Set<number>();
 
-    // Find all repo numbers by scanning for _REPO_{N}_URL patterns
     for (const key in process.env) {
         const match = key.match(/^MIMIR_GITHUB_CODE_REPO_(\d+)_URL$/);
         if (match) {
@@ -63,10 +59,8 @@ function parseCodeRepos(): CodeRepoConfig[] {
         }
     }
 
-    // Sort repo numbers to process in order
     const sortedNumbers = Array.from(repoNumbers).sort((a, b) => a - b);
 
-    // Build config for each repo
     for (const num of sortedNumbers) {
         const url = getEnv(`MIMIR_GITHUB_CODE_REPO_${num}_URL`, false);
         if (!url) {
@@ -99,15 +93,10 @@ function parseCodeRepos(): CodeRepoConfig[] {
     return repos;
 }
 
-/**
- * Parse numbered docs repository environment variables
- * Scans for MIMIR_GITHUB_DOCS_REPO_{N}_URL patterns and collects all related config
- */
 function parseDocsRepos(): DocsRepoConfig[] {
     const repos: DocsRepoConfig[] = [];
     const repoNumbers = new Set<number>();
 
-    // Find all repo numbers by scanning for _REPO_{N}_URL patterns
     for (const key in process.env) {
         const match = key.match(/^MIMIR_GITHUB_DOCS_REPO_(\d+)_URL$/);
         if (match) {
@@ -115,10 +104,8 @@ function parseDocsRepos(): DocsRepoConfig[] {
         }
     }
 
-    // Sort repo numbers to process in order
     const sortedNumbers = Array.from(repoNumbers).sort((a, b) => a - b);
 
-    // Build config for each repo
     for (const num of sortedNumbers) {
         const url = getEnv(`MIMIR_GITHUB_DOCS_REPO_${num}_URL`, false);
         if (!url) {
@@ -161,25 +148,18 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
     const result = loadDotenv({ path: envPath });
 
     if (result.error) {
-        // Only fail if an explicit path was provided, otherwise env vars may already be loaded
         if (configPath) {
             throw new Error(`Failed to load environment file from "${configPath}": ${result.error.message}`);
         }
     }
 
-    // Build configuration from environment variables
     const apiKey = getEnv("MIMIR_SERVER_API_KEY");
     if (!apiKey) {
         throw new Error("Server configuration must include MIMIR_SERVER_API_KEY.");
     }
 
-    const supabaseUrl = getEnv("MIMIR_SUPABASE_URL");
-    const supabaseServiceRoleKey = getEnv("MIMIR_SUPABASE_SERVICE_ROLE_KEY");
-    const supabaseTable = getEnv("MIMIR_SUPABASE_TABLE", false) ?? "docs";
-
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
-        throw new Error("Supabase configuration requires MIMIR_SUPABASE_URL and MIMIR_SUPABASE_SERVICE_ROLE_KEY.");
-    }
+    const databaseUrl = getDatabaseUrl();
+    const databaseTable = getEnv("MIMIR_DATABASE_TABLE", false) ?? "docs";
 
     const embeddingProvider = getEnv("MIMIR_LLM_EMBEDDING_PROVIDER") as LLMProviderName;
     const embeddingModel = getEnv("MIMIR_LLM_EMBEDDING_MODEL");
@@ -204,26 +184,22 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
             githubWebhookSecret: getEnv("MIMIR_SERVER_GITHUB_WEBHOOK_SECRET", false),
             fallbackIngestIntervalMinutes: getEnvNumber("MIMIR_SERVER_FALLBACK_INGEST_INTERVAL_MINUTES"),
         },
-        supabase: {
-            url: supabaseUrl,
-            anonKey: getEnv("MIMIR_SUPABASE_ANON_KEY", false),
-            serviceRoleKey: supabaseServiceRoleKey,
-            table: supabaseTable,
-            similarityThreshold: getEnvNumber("MIMIR_SUPABASE_SIMILARITY_THRESHOLD", 0.2),
-            matchCount: getEnvNumber("MIMIR_SUPABASE_MATCH_COUNT", 10),
-            bm25MatchCount: getEnvNumber("MIMIR_SUPABASE_BM25_MATCH_COUNT", 10),
-            enableHybridSearch: getEnvBoolean("MIMIR_SUPABASE_ENABLE_HYBRID_SEARCH", true),
+        database: {
+            databaseUrl,
+            table: databaseTable,
+            similarityThreshold: getEnvNumber("MIMIR_DATABASE_SIMILARITY_THRESHOLD", 0.2),
+            matchCount: getEnvNumber("MIMIR_DATABASE_MATCH_COUNT", 10),
+            bm25MatchCount: getEnvNumber("MIMIR_DATABASE_BM25_MATCH_COUNT", 10),
+            enableHybridSearch: getEnvBoolean("MIMIR_DATABASE_ENABLE_HYBRID_SEARCH", true),
         },
         github: (() => {
             const githubUrl = getEnv("MIMIR_GITHUB_URL", false) ?? "";
             const codeUrl = getEnv("MIMIR_GITHUB_CODE_URL", false);
             const docsUrl = getEnv("MIMIR_GITHUB_DOCS_URL", false);
 
-            // Check for single-repo config (backward compatibility)
             const hasSingleCodeRepo = !!codeUrl;
             const hasSingleDocsRepo = !!docsUrl;
 
-            // Parse multiple repos if single-repo vars are not set
             let codeRepos: CodeRepoConfig[] | undefined;
             let docsRepos: DocsRepoConfig[] | undefined;
 
@@ -233,7 +209,6 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
                     codeRepos = parsedCodeRepos;
                 }
             } else {
-                // Convert single-repo config to array format for consistency
                 const codeDirectory = getEnv("MIMIR_GITHUB_CODE_DIRECTORY", false);
                 const codeIncludeDirs = getEnv("MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES", false);
                 codeRepos = [{
@@ -249,7 +224,6 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
                     docsRepos = parsedDocsRepos;
                 }
             } else {
-                // Convert single-repo config to array format for consistency
                 const docsDirectory = getEnv("MIMIR_GITHUB_DOCS_DIRECTORY", false);
                 const docsIncludeDirs = getEnv("MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES", false);
                 docsRepos = [{
@@ -263,14 +237,12 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
                 githubUrl,
                 directory: getEnv("MIMIR_GITHUB_DIRECTORY", false),
                 includeDirectories: getEnv("MIMIR_GITHUB_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
-                // Backward compatibility: keep single-repo fields
                 codeUrl,
                 codeDirectory: getEnv("MIMIR_GITHUB_CODE_DIRECTORY", false),
                 codeIncludeDirectories: getEnv("MIMIR_GITHUB_CODE_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
                 docsUrl,
                 docsDirectory: getEnv("MIMIR_GITHUB_DOCS_DIRECTORY", false),
                 docsIncludeDirectories: getEnv("MIMIR_GITHUB_DOCS_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
-                // Multiple repos support
                 codeRepos,
                 docsRepos,
                 branch: getEnv("MIMIR_GITHUB_BRANCH", false) ?? "main",
@@ -282,7 +254,6 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
             extractVariables: getEnvBoolean("MIMIR_EXTRACT_VARIABLES", false),
             extractMethods: getEnvBoolean("MIMIR_EXTRACT_METHODS", true),
             excludePatterns: [
-                // TypeScript/JavaScript test patterns
                 "*.test.ts",
                 "*.test.tsx",
                 "*.spec.ts",
@@ -294,20 +265,17 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
                 "test/",
                 "__tests__/",
                 "tests/",
-                // Python test patterns
                 "test_*.py",
                 "*_test.py",
                 "*_tests.py",
                 "tests/",
                 "test/",
                 "__tests__/",
-                // Rust test patterns
                 "*_test.rs",
                 "*_tests.rs",
                 "tests/",
                 "test/",
                 "benches/",
-                // User-defined patterns from env (appended to allow overrides)
                 ...(getEnv("MIMIR_EXCLUDE_PATTERNS", false)?.split(",").map(p => p.trim()).filter(Boolean) ?? []),
             ],
             includeDirectories: getEnv("MIMIR_GITHUB_INCLUDE_DIRECTORIES", false)?.split(",").map(p => p.trim()).filter(Boolean),
@@ -347,7 +315,6 @@ export async function loadAppConfig(configPath?: string): Promise<AppConfig> {
         },
     };
 
-    // Resolve relative paths
     if (config.github?.outputDir) {
         config.github.outputDir = path.resolve(PACKAGE_ROOT, config.github.outputDir);
     }

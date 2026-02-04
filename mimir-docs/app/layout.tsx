@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     default: 'Mimir - Contextual RAG for Code & Documentation',
     template: '%s | Mimir',
   },
-  description: 'Mimir is a comprehensive contextual RAG (Retrieval Augmented Generation) system with MCP integration. Ingest code and documentation from multiple GitHub repositories into Supabase vector store. Supports TypeScript, Python, and more. OpenAI-compatible API and MCP protocol for AI assistants.',
+  description: 'Mimir is a comprehensive contextual RAG (Retrieval Augmented Generation) system with MCP integration. Ingest code and documentation from multiple GitHub repositories into PostgreSQL (pgvector). Supports TypeScript, Python, and more. OpenAI-compatible API and MCP protocol for AI assistants.',
   keywords: [
     'RAG',
     'Retrieval Augmented Generation',
@@ -24,7 +24,8 @@ export const metadata: Metadata = {
     'Documentation Search',
     'Codebase Search',
     'Vector Database',
-    'Supabase',
+    'PostgreSQL',
+    'pgvector',
     'TypeScript',
     'Python',
     'AI Documentation',

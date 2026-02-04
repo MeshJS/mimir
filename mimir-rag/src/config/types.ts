@@ -9,10 +9,8 @@ export interface ServerConfig {
     fallbackIngestIntervalMinutes?: number;
 }
 
-export interface SupabaseConfig {
-    url: string;
-    anonKey?: string;
-    serviceRoleKey: string;
+export interface DatabaseConfig {
+    databaseUrl: string;
     table: string;
     similarityThreshold: number;
     matchCount: number;
@@ -24,12 +22,12 @@ export interface GithubConfig {
     githubUrl: string;
     directory?: string; // Directory for main repo (fallback if separate not set)
     includeDirectories?: string[]; // Include directories for main repo (fallback if separate not set)
-    codeUrl?: string; // Optional: separate repo for code (TypeScript, Python, etc.) - backward compatibility
-    codeDirectory?: string; // Optional: directory for code repo - backward compatibility
-    codeIncludeDirectories?: string[]; // Optional: include directories for code repo - backward compatibility
-    docsUrl?: string; // Optional: separate repo for MDX docs - backward compatibility
-    docsDirectory?: string; // Optional: directory for docs repo - backward compatibility
-    docsIncludeDirectories?: string[]; // Optional: include directories for docs repo - backward compatibility
+    codeUrl?: string;
+    codeDirectory?: string;
+    codeIncludeDirectories?: string[];
+    docsUrl?: string;
+    docsDirectory?: string;
+    docsIncludeDirectories?: string[];
     codeRepos?: CodeRepoConfig[]; // Multiple code repositories with per-repo configuration
     docsRepos?: DocsRepoConfig[]; // Multiple docs repositories with per-repo configuration
     branch?: string;
@@ -103,7 +101,7 @@ export interface LLMConfig {
 
 export interface AppConfig {
     server: ServerConfig;
-    supabase: SupabaseConfig;
+    database: DatabaseConfig;
     logging: LoggingConfig;
     github: GithubConfig;
     docs?: DocumentationConfig;
